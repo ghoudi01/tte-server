@@ -1,0 +1,81 @@
+{
+  "kind": "collectionType",
+  "collectionName": "orders",
+  "info": {
+    "singularName": "order",
+    "pluralName": "orders",
+    "displayName": "Order",
+    "description": "E-commerce orders with trust scoring and verification status"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "merchant": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::merchant.merchant",
+      "inversedBy": "orders"
+    },
+    "phoneNumber": {
+      "type": "string",
+      "required": true,
+      "maxLength": 20
+    },
+    "customerName": {
+      "type": "string",
+      "maxLength": 255
+    },
+    "orderAmount": {
+      "type": "integer",
+      "required": true,
+      "default": 0
+    },
+    "trustScore": {
+      "type": "integer",
+      "default": 50,
+      "min": 0,
+      "max": 100
+    },
+    "verificationStatus": {
+      "type": "enumeration",
+      "enum": ["pending", "verified", "failed", "rejected"],
+      "default": "pending"
+    },
+    "orderStatus": {
+      "type": "enumeration",
+      "enum": ["placed", "shipped", "delivered", "returned", "cancelled"],
+      "default": "placed"
+    },
+    "requiresVerification": {
+      "type": "boolean",
+      "default": false
+    },
+    "verificationMethod": {
+      "type": "enumeration",
+      "enum": ["sms", "ivr", "email", "none"],
+      "default": "none"
+    },
+    "productCategory": {
+      "type": "string",
+      "maxLength": 255
+    },
+    "productDetails": {
+      "type": "json"
+    },
+    "shippingAddress": {
+      "type": "text"
+    },
+    "notes": {
+      "type": "text"
+    },
+    "isSpamManual": {
+      "type": "boolean",
+      "default": false
+    },
+    "spamReason": {
+      "type": "string"
+    }
+  }
+}

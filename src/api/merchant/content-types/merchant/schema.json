@@ -1,0 +1,86 @@
+{
+  "kind": "collectionType",
+  "collectionName": "merchants",
+  "info": {
+    "singularName": "merchant",
+    "pluralName": "merchants",
+    "displayName": "Merchant",
+    "description": "E-commerce merchants using the TTE platform"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "user": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "businessName": {
+      "type": "string",
+      "required": true,
+      "maxLength": 255
+    },
+    "email": {
+      "type": "email",
+      "required": true,
+      "maxLength": 320
+    },
+    "phone": {
+      "type": "string",
+      "required": true,
+      "maxLength": 20
+    },
+    "address": {
+      "type": "text"
+    },
+    "city": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "country": {
+      "type": "string",
+      "default": "Tunisia",
+      "maxLength": 100
+    },
+    "apiKey": {
+      "type": "string",
+      "unique": true,
+      "maxLength": 255
+    },
+    "rtoRate": {
+      "type": "integer",
+      "default": 0,
+      "min": 0,
+      "max": 100
+    },
+    "totalOrders": {
+      "type": "integer",
+      "default": 0
+    },
+    "successfulOrders": {
+      "type": "integer",
+      "default": 0
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": ["active", "inactive", "suspended"],
+      "default": "active"
+    },
+    "subscriptionPlan": {
+      "type": "enumeration",
+      "enum": ["starter", "growth", "enterprise"],
+      "default": "starter"
+    },
+    "orders": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::order.order",
+      "mappedBy": "merchant"
+    },
+    "automationConfig": {
+      "type": "json"
+    }
+  }
+}

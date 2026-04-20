@@ -1,0 +1,54 @@
+{
+  "name": "tte-strapi-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tunisia Trust Engine — Strapi backend with tRPC + Drizzle ORM (plugins API, webhooks, content)",
+  "scripts": {
+    "build": "strapi build && tsc",
+    "console": "strapi console",
+    "deploy": "strapi deploy",
+    "dev": "concurrently \"strapi develop\" \"tsc --watch\"",
+    "develop": "strapi develop",
+    "start": "strapi start",
+    "strapi": "strapi",
+    "upgrade": "npx @strapi/upgrade latest",
+    "upgrade:dry": "npx @strapi/upgrade latest --dry",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@strapi/plugin-cloud": "5.36.0",
+    "@strapi/plugin-users-permissions": "5.36.0",
+    "@strapi/strapi": "5.36.0",
+    "@trpc/server": "^11.0.0",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "12.4.1",
+    "drizzle-orm": "^0.46.0",
+    "jsonwebtoken": "^9.0.2",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "react-router-dom": "^6.0.0",
+    "styled-components": "^6.0.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "concurrently": "^9.0.0",
+    "drizzle-kit": "^0.31.0",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=20.0.0 <=24.x.x",
+    "npm": ">=6.0.0"
+  },
+  "strapi": {
+    "uuid": "36087feb-a7b4-41b6-a704-034bdb3d97b9",
+    "installId": "0eba1b722af209d02f023f39e3ce4418d32b57e3cb349852c40d79306ec3ce78"
+  }
+}
