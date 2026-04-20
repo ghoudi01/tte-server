@@ -3,14 +3,61 @@ import { db } from '../../database/index.js';
 import { orders, users, feedbacks, pointsHistory, orderVerificationLogs } from '../schema/index.js';
 import { eq, desc, and, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
+import { z } from 'zod';
+
+const orderAddressSchema = z
+  .object({
+    city: z.string().optional(),
+    street: z.string().optional(),
+  })
+  .passthrough()
+  .optional();
+
+const createOrderSchema = z
+  .object({
+    userId: z.string().optional(),
+    orderId: z.string(),
+    customerName: z.string(),
+    customerEmail: z.string(),
+    customerPhone: z.string(),
+    totalAmount: z.union([z.number(), z.string()]),
+    currency: z.string(),
+    sourceType: z.enum([
+      'woocommerce',
+      'shopify',
+      'facebook',
+      'instagram',
+      'chrome_extension',
+      'manual',
+      'whatsapp',
+      'api',
+    ]),
+    sourcePlatform: z.string(),
+    pluginId: z.string().nullable().optional(),
+    shippingAddress: orderAddressSchema,
+    billingAddress: z.unknown().optional(),
+    items: z.unknown().optional(),
+    metadata: z.unknown().optional(),
+    notes: z.string().optional(),
+  })
+  .passthrough();
+
+const updateStatusSchema = z
+  .object({
+    orderId: z.string(),
+  })
+  .passthrough();
+
+const submitFeedbackSchema = z.object({
+  orderId: z.string(),
+  rating: z.number().int().min(1).max(5),
+  comment: z.string(),
+});
 
 export const ordersRouter = router({
   // Create a new order
   create: protectedProcedure
-    .input(async (input) => {
-      // Input validation will be done by Zod schema in validators
-      return input;
-    })
+    .input(createOrderSchema)
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.user?.id || input.userId;
       
@@ -87,7 +134,7 @@ export const ordersRouter = router({
 
   // Get order by ID
   getById: protectedProcedure
-    .input((input) => input as string)
+    .input(z.string())
     .query(async ({ input, ctx }) => {
       const order = await db.query.orders.findFirst({
         where: and(
@@ -110,7 +157,7 @@ export const ordersRouter = router({
 
   // Update order status
   updateStatus: protectedProcedure
-    .input((input) => input)
+    .input(updateStatusSchema)
     .mutation(async ({ input, ctx }) => {
       const { orderId, ...updates } = input;
 
@@ -128,7 +175,7 @@ export const ordersRouter = router({
 
   // Submit feedback for an order
   submitFeedback: protectedProcedure
-    .input((input) => input)
+    .input(submitFeedbackSchema)
     .mutation(async ({ input, ctx }) => {
       const { orderId, rating, comment } = input;
 
