@@ -47,6 +47,12 @@
     "node": ">=20.0.0 <=24.x.x",
     "npm": ">=6.0.0"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild"
+    ]
+  },
   "strapi": {
     "uuid": "36087feb-a7b4-41b6-a704-034bdb3d97b9",
     "installId": "0eba1b722af209d02f023f39e3ce4418d32b57e3cb349852c40d79306ec3ce78"
