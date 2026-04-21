@@ -59,13 +59,20 @@ type OrderFeedback = {
 
 @Injectable()
 export class PrismaService implements OnModuleInit {
-  private users: User[] = [];
-  private merchants: Merchant[] = [];
-  private orders: Order[] = [];
-  private spamPhones: any[] = [];
-  private orderFeedbacks: OrderFeedback[] = [];
-  private orderSeq = 1;
-  private orderFeedbackSeq = 1;
+  // Keep storage static so all PrismaService instances share the same data.
+  private static usersStore: User[] = [];
+  private static merchantsStore: Merchant[] = [];
+  private static ordersStore: Order[] = [];
+  private static spamPhonesStore: any[] = [];
+  private static orderFeedbacksStore: OrderFeedback[] = [];
+  private static orderSeqStore = 1;
+  private static orderFeedbackSeqStore = 1;
+
+  private users = PrismaService.usersStore;
+  private merchants = PrismaService.merchantsStore;
+  private orders = PrismaService.ordersStore;
+  private spamPhones = PrismaService.spamPhonesStore;
+  private orderFeedbacks = PrismaService.orderFeedbacksStore;
 
   async onModuleInit() {
     return;
@@ -154,7 +161,7 @@ export class PrismaService implements OnModuleInit {
     },
     create: async ({ data }: any) => {
       const order: Order = {
-        id: this.orderSeq++,
+        id: PrismaService.orderSeqStore++,
         merchantId: data.merchantId,
         userId: data.userId ?? null,
         externalOrderId: data.externalOrderId ?? null,
@@ -193,7 +200,7 @@ export class PrismaService implements OnModuleInit {
   orderFeedback = {
     create: async ({ data }: any) => {
       const feedback: OrderFeedback = {
-        id: this.orderFeedbackSeq++,
+        id: PrismaService.orderFeedbackSeqStore++,
         orderId: Number(data.orderId),
         merchantId: data.merchantId,
         rating: Number(data.rating),

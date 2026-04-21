@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { ConflictException, Injectable, UnauthorizedException } from "@nestjs/common";
 import bcrypt from "bcryptjs";
 import { PrismaService } from "../prisma/prisma.service.js";
 
@@ -14,7 +14,7 @@ export class AuthService {
     const existing = await this.prisma.user.findUnique({
       where: { email: input.email.toLowerCase() },
     });
-    if (existing) throw new UnauthorizedException("Email already registered");
+    if (existing) throw new ConflictException("Email already registered");
 
     const passwordHash = await bcrypt.hash(input.password, 10);
     const user = await this.prisma.user.create({

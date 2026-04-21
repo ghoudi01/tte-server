@@ -27,6 +27,11 @@ export class OrdersService {
   async updateStatus(userId: string, input: { orderId: number; orderStatus: string }) {
     const merchant = await this.merchants.getProfile(userId);
     if (!merchant) throw new NotFoundException("Merchant not found");
+    const order = await this.prisma.order.findFirst({
+      where: { id: input.orderId, merchantId: merchant.id },
+      select: { id: true },
+    });
+    if (!order) throw new NotFoundException("Order not found");
     return this.prisma.order.update({
       where: { id: input.orderId, merchantId: merchant.id },
       data: { orderStatus: input.orderStatus },
