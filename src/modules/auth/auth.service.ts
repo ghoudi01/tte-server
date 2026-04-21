@@ -10,7 +10,12 @@ export class AuthService {
     return this.prisma.user.findUnique({ where: { id: userId } });
   }
 
-  async register(input: { email: string; password: string; name?: string }) {
+  async register(input: {
+    email: string;
+    password: string;
+    name?: string;
+    phone?: string;
+  }) {
     const existing = await this.prisma.user.findUnique({
       where: { email: input.email.toLowerCase() },
     });
@@ -21,6 +26,7 @@ export class AuthService {
       data: {
         email: input.email.toLowerCase(),
         fullName: input.name || input.email.split("@")[0] || "User",
+        phone: input.phone?.trim() || null,
         passwordHash,
       },
     });

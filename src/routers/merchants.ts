@@ -15,6 +15,7 @@ export const merchantsRouter = router({
         phone: z.string(),
         city: z.string().optional(),
         address: z.string().optional(),
+        productTypes: z.array(z.string()).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => services.merchants.create(ctx.user!.id, input)),
@@ -26,6 +27,7 @@ export const merchantsRouter = router({
         phone: z.string().optional(),
         city: z.string().optional(),
         address: z.string().optional(),
+        productTypes: z.array(z.string()).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => services.merchants.update(ctx.user!.id, input)),

@@ -97,13 +97,13 @@ export class PluginApiController {
   @Post("spam-phones")
   async spamPhone(@Headers("x-api-key") apiKey: string, @Body() body: any) {
     const merchant = await this.requireMerchant(apiKey);
-    await this.prisma.spamPhone.create({
-      data: {
-        merchantId: merchant.id,
-        phoneNumber: body.phoneNumber,
-        reason: body.reason ?? null,
-        source: body.source ?? null,
-      },
+    await this.phoneVerification.reportVerdict({
+      merchantId: merchant.id,
+      phoneNumber: body.phoneNumber,
+      verdict: body.verdict === "not_spam" ? "not_spam" : "spam",
+      orderId: body.orderId ? Number(body.orderId) : undefined,
+      reason: body.reason,
+      source: body.source ?? "plugin",
     });
     return { success: true };
   }

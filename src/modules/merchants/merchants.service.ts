@@ -19,6 +19,7 @@ export class MerchantsService {
         phone: input.phone,
         city: input.city ?? null,
         address: input.address ?? null,
+        productTypes: input.productTypes ?? [],
         apiKey: `tte_${randomUUID().replace(/-/g, "")}`,
       },
     });

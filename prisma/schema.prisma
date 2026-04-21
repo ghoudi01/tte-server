@@ -10,6 +10,7 @@ datasource db {
 model User {
   id          String    @id @default(uuid())
   email       String    @unique
+  phone       String?
   passwordHash String?
   fullName    String
   totalPoints Int       @default(0)
@@ -36,6 +37,7 @@ model Merchant {
   autoShippingSelectionEnabled Boolean  @default(true)
   trustThresholdForDeposit     Int      @default(40)
   defaultShippingCompany       String   @default("Rapid-Poste")
+  productTypes                 String[] @default([])
   user                         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   orders                       Order[]
   createdAt                    DateTime @default(now())
@@ -83,8 +85,13 @@ model OrderFeedback {
 model SpamPhone {
   id          Int      @id @default(autoincrement())
   merchantId  String?
+  orderId     Int?
   phoneNumber String
+  verdict     String   @default("spam")
   reason      String?
   source      String?
   reportedAt  DateTime @default(now())
+
+  @@index([phoneNumber, verdict])
+  @@index([orderId])
 }

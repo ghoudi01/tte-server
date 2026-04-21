@@ -12,6 +12,7 @@ export const authRouter = router({
     return {
       id: user.id,
       email: user.email,
+      phone: user.phone,
       fullName: user.fullName,
       totalPoints: user.totalPoints,
       tier: user.tier,
@@ -24,6 +25,7 @@ export const authRouter = router({
         email: z.string().email(),
         password: z.string().min(6),
         name: z.string().optional(),
+        phone: z.string().min(1).optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -34,6 +36,7 @@ export const authRouter = router({
           user: {
             id: newUser.id,
             email: newUser.email,
+            phone: newUser.phone,
             fullName: newUser.fullName,
             totalPoints: newUser.totalPoints,
             tier: newUser.tier,
@@ -57,6 +60,7 @@ export const authRouter = router({
           user: {
             id: user.id,
             email: user.email,
+            phone: user.phone,
             fullName: user.fullName,
             totalPoints: user.totalPoints,
             tier: user.tier,
