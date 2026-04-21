@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
+import type { Order } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service.js";
 
@@ -52,8 +53,8 @@ export class MerchantsService {
       take: 20,
     });
     const totalOrders = orders.length;
-    const delivered = orders.filter(o => o.orderStatus === "delivered").length;
-    const returned = orders.filter(o => o.orderStatus === "returned").length;
+    const delivered = orders.filter((o: Order) => o.orderStatus === "delivered").length;
+    const returned = orders.filter((o: Order) => o.orderStatus === "returned").length;
     return {
       merchant,
       orders,

@@ -4,7 +4,7 @@
   "private": true,
   "description": "Tunisia Trust Engine — NestJS backend with Prisma + tRPC compatibility",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "prisma generate && tsc -p tsconfig.json",
     "dev": "tsx watch src/main.ts",
     "start": "node dist/src/main.js",
     "prisma:generate": "prisma generate",

@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import type { Order, SpamPhone } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 @Injectable()
@@ -37,10 +38,10 @@ export class PhoneVerificationService {
       }),
     ]);
 
-    const successfulOrders = orders.filter(o => o.orderStatus === "delivered").length;
-    const rtoCount = orders.filter(o => o.orderStatus === "returned").length;
-    const spamReports = verdictReports.filter(r => r.verdict === "spam").length;
-    const notSpamReports = verdictReports.filter(r => r.verdict === "not_spam").length;
+    const successfulOrders = orders.filter((o: Order) => o.orderStatus === "delivered").length;
+    const rtoCount = orders.filter((o: Order) => o.orderStatus === "returned").length;
+    const spamReports = verdictReports.filter((r: SpamPhone) => r.verdict === "spam").length;
+    const notSpamReports = verdictReports.filter((r: SpamPhone) => r.verdict === "not_spam").length;
     const trustScore = Math.max(
       5,
       Math.min(
