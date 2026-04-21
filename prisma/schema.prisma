@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String    @id @default(uuid())
+  email       String    @unique
+  passwordHash String?
+  fullName    String
+  totalPoints Int       @default(0)
+  tier        String    @default("bronze")
+  merchants   Merchant[]
+  orders      Order[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Merchant {
+  id                           String   @id @default(uuid())
+  userId                       String
+  businessName                 String
+  email                        String
+  phone                        String
+  city                         String?
+  address                      String?
+  apiKey                       String   @unique
+  status                       String   @default("active")
+  creditsBalance               Int      @default(0)
+  autoValidationEnabled        Boolean  @default(true)
+  whatsappValidationEnabled    Boolean  @default(true)
+  autoShippingSelectionEnabled Boolean  @default(true)
+  trustThresholdForDeposit     Int      @default(40)
+  defaultShippingCompany       String   @default("Rapid-Poste")
+  user                         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders                       Order[]
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+}
+
+model Order {
+  id                 Int      @id @default(autoincrement())
+  merchantId         String
+  userId             String?
+  externalOrderId    String?
+  phoneNumber        String
+  clientName         String?
+  orderAmount        Float
+  trustScore         Int      @default(50)
+  riskLevel          String   @default("medium")
+  verificationStatus String   @default("pending")
+  orderStatus        String   @default("placed")
+  pointsEarned       Int      @default(0)
+  sourcePlugin       String?
+  metadata           Json?
+  feedbacks          OrderFeedback[]
+  merchant           Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  user               User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model OrderFeedback {
+  id         Int      @id @default(autoincrement())
+  orderId    Int
+  merchantId String
+  rating     Int
+  comment    String?
+  category   String?
+  source     String   @default("merchant")
+  createdAt  DateTime @default(now())
+
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([merchantId])
+}
+
+model SpamPhone {
+  id          Int      @id @default(autoincrement())
+  merchantId  String?
+  phoneNumber String
+  reason      String?
+  source      String?
+  reportedAt  DateTime @default(now())
+}
