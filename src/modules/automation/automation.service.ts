@@ -10,11 +10,22 @@ export class AutomationService {
   ) {}
 
   getHomeContent() {
-    return {};
+    return {
+      support: {
+        title: "التواصل معنا",
+        subtitle: "تواصل معنا لأي استفسارات أو أسئلة",
+      },
+    };
   }
 
   getAppContent() {
-    return { dashboard: { brandName: "Tunisia Trust Engine" } };
+    return {
+      dashboard: { brandName: "Tunisia Trust Engine" },
+      support: {
+        pageTitle: "الدعم",
+        pageSubtitle: "مركز المساعدة والتواصل مع فريقنا",
+      },
+    };
   }
 
   getRoadmapIdeas() {

@@ -1,9 +1,11 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import type { Order, SpamPhone } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 @Injectable()
 export class PhoneVerificationService {
+  private static readonly CHECK_PHONE_COST = 5;
+
   constructor(private readonly prisma: PrismaService) {}
 
   async reportVerdict(input: {
@@ -26,8 +28,29 @@ export class PhoneVerificationService {
     });
   }
 
-  async check(phoneNumber: string) {
-    const [orders, verdictReports] = await Promise.all([
+  async check(phoneNumber: string, userId?: string) {
+    const merchant = userId
+      ? await this.prisma.merchant.findFirst({
+          where: { userId },
+          select: { id: true, creditsBalance: true },
+        })
+      : null;
+
+    if (merchant) {
+      if (merchant.creditsBalance < PhoneVerificationService.CHECK_PHONE_COST) {
+        throw new BadRequestException("Insufficient credits");
+      }
+      await this.prisma.merchant.update({
+        where: { id: merchant.id },
+        data: {
+          creditsBalance: {
+            decrement: PhoneVerificationService.CHECK_PHONE_COST,
+          },
+        },
+      });
+    }
+
+    const [orders, verdictReports, updatedMerchant] = await Promise.all([
       this.prisma.order.findMany({
         where: { phoneNumber },
         orderBy: { createdAt: "desc" },
@@ -36,6 +59,12 @@ export class PhoneVerificationService {
         where: { phoneNumber },
         orderBy: { reportedAt: "desc" },
       }),
+      merchant
+        ? this.prisma.merchant.findUnique({
+            where: { id: merchant.id },
+            select: { creditsBalance: true },
+          })
+        : Promise.resolve(null),
     ]);
 
     const successfulOrders = orders.filter((o: Order) => o.orderStatus === "delivered").length;
@@ -62,6 +91,7 @@ export class PhoneVerificationService {
       rtoCount,
       spamReports,
       notSpamReports,
+      creditsBalance: updatedMerchant?.creditsBalance ?? null,
     };
   }
 }

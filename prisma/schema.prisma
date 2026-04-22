@@ -40,6 +40,9 @@ model Merchant {
   productTypes                 String[] @default([])
   user                         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   orders                       Order[]
+  creditTransactions           CreditTransaction[]
+  sentReferrals                Referral[] @relation("ReferrerMerchant")
+  receivedReferrals            Referral[] @relation("ReferredMerchant")
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
 }
@@ -94,4 +97,33 @@ model SpamPhone {
 
   @@index([phoneNumber, verdict])
   @@index([orderId])
+}
+
+model CreditTransaction {
+  id         Int      @id @default(autoincrement())
+  merchantId String
+  type       String
+  amount     Int
+  reason     String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId, createdAt])
+}
+
+model Referral {
+  id                Int      @id @default(autoincrement())
+  referrerMerchantId String
+  referredMerchantId String?
+  referredEmail      String?
+  status             String   @default("pending")
+  createdAt          DateTime @default(now())
+
+  referrerMerchant   Merchant @relation("ReferrerMerchant", fields: [referrerMerchantId], references: [id], onDelete: Cascade)
+  referredMerchant   Merchant? @relation("ReferredMerchant", fields: [referredMerchantId], references: [id], onDelete: SetNull)
+
+  @@index([referrerMerchantId, createdAt])
+  @@index([referredMerchantId])
 }

@@ -5,7 +5,7 @@ import { services } from "../trpc/services.js";
 export const phoneVerificationRouter = router({
   check: protectedProcedure
     .input(z.object({ phoneNumber: z.string().min(6) }))
-    .query(({ input }) => services.phoneVerification.check(input.phoneNumber)),
+    .query(({ input, ctx }) => services.phoneVerification.check(input.phoneNumber, ctx.user!.id)),
   reportVerdict: protectedProcedure
     .input(
       z.object({
