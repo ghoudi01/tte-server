@@ -7,6 +7,8 @@ import { OrdersModule } from "./orders/orders.module.js";
 import { PhoneVerificationModule } from "./phone-verification/phone-verification.module.js";
 import { PluginApiModule } from "./plugin-api/plugin-api.module.js";
 import { PrismaModule } from "./prisma/prisma.module.js";
+import { HealthModule } from "./health/health.module.js";
+import { WebhooksModule } from "./webhooks/webhooks.module.js";
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { PrismaModule } from "./prisma/prisma.module.js";
     PhoneVerificationModule,
     AutomationModule,
     PluginApiModule,
+    HealthModule,
+    WebhooksModule,
   ],
 })
 export class AppModule {}

@@ -1,7 +1,18 @@
-import { Body, Controller, Headers, Post, UnauthorizedException } from "@nestjs/common";
+
+import { BadRequestException, Body, Controller, Headers, Post, UnauthorizedException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { OrdersService } from "../orders/orders.service.js";
 import { PhoneVerificationService } from "../phone-verification/phone-verification.service.js";
+import {
+  CheckOrderDto,
+  CreateEnhancedOrderDto,
+  CreatePluginOrderDto,
+  OrderFeedbackDto,
+  PhoneCheckDto,
+  PluginReportDto,
+  SendOtpDto,
+  SpamPhoneDto,
+} from "./plugin-api.dto.js";
 
 @Controller("api")
 export class PluginApiController {
@@ -29,24 +40,29 @@ export class PluginApiController {
   }
 
   @Post("phone-verification/check")
-  async check(@Headers("x-api-key") apiKey: string, @Body() body: { phoneNumber: string }) {
+  async check(@Headers("x-api-key") apiKey: string, @Body() body: PhoneCheckDto) {
     await this.requireMerchant(apiKey);
     return this.phoneVerification.check(body.phoneNumber);
   }
 
   @Post("phone-verification/send-otp")
-  async sendOtp(@Headers("x-api-key") apiKey: string, @Body() body: { phoneNumber: string }) {
+  async sendOtp(@Headers("x-api-key") apiKey: string, @Body() body: SendOtpDto) {
     await this.requireMerchant(apiKey);
     return { success: true, message: `OTP sent to ${body.phoneNumber}` };
   }
 
   @Post("orders")
-  async createOrder(@Headers("x-api-key") apiKey: string, @Body() body: any) {
+  async createOrder(@Headers("x-api-key") apiKey: string, @Body() body: CreatePluginOrderDto) {
     const merchant = await this.requireMerchant(apiKey);
-    const check = await this.phoneVerification.check(body.phoneNumber ?? body.phone);
+    const phoneNumber = body.phoneNumber ?? body.phone;
+    const orderAmount = body.orderAmount ?? body.amount;
+    if (!phoneNumber) throw new BadRequestException("phoneNumber is required");
+    if (orderAmount === undefined) throw new BadRequestException("orderAmount is required");
+
+    const check = await this.phoneVerification.check(phoneNumber);
     const order = await this.orders.createFromPlugin(merchant.id, {
-      phoneNumber: body.phoneNumber ?? body.phone,
-      orderAmount: body.orderAmount ?? body.amount,
+      phoneNumber,
+      orderAmount,
       orderId: body.orderId,
       source: body.source ?? body.sourcePlatform ?? "api",
       clientName: body.clientName ?? body.customerName,
@@ -54,18 +70,78 @@ export class PluginApiController {
       riskLevel: check.riskLevel,
       verificationStatus: check.riskLevel === "high" ? "failed" : "verified",
       orderStatus: "placed",
+      metadata: {
+        items: body.items,
+        customerEmail: body.customerEmail,
+        ipAddress: body.ipAddress,
+        shippingMethod: body.shippingMethod,
+        shippingCost: body.shippingCost,
+        platformRiskScore: body.platformRiskScore,
+      },
     });
+    return { success: true, order };
+  }
+
+  // Enhanced order creation with full enriched data
+  @Post("orders/enhanced")
+  async createEnhancedOrder(@Headers("x-api-key") apiKey: string, @Body() body: CreateEnhancedOrderDto) {
+    const merchant = await this.requireMerchant(apiKey);
+    
+    const check = await this.phoneVerification.check(body.phoneNumber);
+    
+    const order = await this.orders.createFromPlugin(merchant.id, {
+      phoneNumber: body.phoneNumber,
+      orderAmount: body.orderAmount,
+      orderId: body.orderId,
+      source: body.paymentMethod,
+      sourcePlatform: body.sourcePlatform ?? 'plugin',
+      clientName: body.customer?.fullName,
+      trustScore: check.trustScore,
+      riskLevel: check.riskLevel,
+      verificationStatus: check.riskLevel === "high" ? "failed" : "verified",
+      orderStatus: "placed",
+      metadata: {
+        customer: body.customer ? {
+          email: body.customer.email,
+          fullName: body.customer.fullName,
+          registrationDate: body.customer.registrationDate,
+          totalPreviousOrders: body.customer.totalPreviousOrders,
+          totalLifetimeValue: body.customer.totalLifetimeValue,
+          loyaltyTier: body.customer.loyaltyTier,
+          address: body.customer.address,
+        } : undefined,
+        items: body.items,
+        paymentMethod: body.paymentMethod,
+        paymentMethodRaw: body.paymentMethodRaw,
+        customerEmail: body.customerEmail,
+        shippingMethod: body.shippingMethod,
+        shippingCost: body.shippingCost,
+        ipAddress: body.ipAddress,
+        userAgent: body.userAgent,
+        deviceId: body.deviceId,
+        checkoutSessionId: body.checkoutSessionId,
+        platformRiskScore: body.platformRiskScore,
+        platformFlags: body.platformFlags,
+        checkoutDurationSeconds: body.checkoutDurationSeconds,
+        marketingConsent: body.marketingConsent,
+        timeOfDay: body.timeOfDay,
+        timezone: body.timezone,
+        storeCategory: body.storeCategory,
+        externalOrderId: body.externalOrderId,
+      },
+    });
+    
     return { success: true, order };
   }
 
   @Post("tte/check-order")
   async checkOrder(
     @Headers("x-api-key") apiKey: string,
-    @Body() body: { phone: string; amount: number; name?: string; address?: string }
+    @Body() body: CheckOrderDto
   ) {
     await this.requireMerchant(apiKey);
     const check = await this.phoneVerification.check(body.phone);
-    const action = this.mapDecisionAction(check.trustScore, Number(body.amount || 0));
+    const action = this.mapDecisionAction(check.trustScore, body.amount);
 
     // Critical: never expose trust score to buyer-facing integrations.
     return { action };
@@ -74,19 +150,12 @@ export class PluginApiController {
   @Post("tte/order-feedback")
   async addOrderFeedback(
     @Headers("x-api-key") apiKey: string,
-    @Body()
-    body: {
-      orderId: number;
-      rating: number;
-      comment?: string;
-      category?: string;
-      source?: string;
-    }
+    @Body() body: OrderFeedbackDto
   ) {
     const merchant = await this.requireMerchant(apiKey);
     const feedback = await this.orders.addFeedback(merchant.id, {
-      orderId: Number(body.orderId),
-      rating: Math.max(1, Math.min(5, Number(body.rating || 0))),
+      orderId: body.orderId,
+      rating: body.rating,
       comment: body.comment,
       category: body.category,
       source: body.source ?? "plugin",
@@ -95,13 +164,13 @@ export class PluginApiController {
   }
 
   @Post("spam-phones")
-  async spamPhone(@Headers("x-api-key") apiKey: string, @Body() body: any) {
+  async spamPhone(@Headers("x-api-key") apiKey: string, @Body() body: SpamPhoneDto) {
     const merchant = await this.requireMerchant(apiKey);
     await this.phoneVerification.reportVerdict({
       merchantId: merchant.id,
       phoneNumber: body.phoneNumber,
       verdict: body.verdict === "not_spam" ? "not_spam" : "spam",
-      orderId: body.orderId ? Number(body.orderId) : undefined,
+      orderId: body.orderId,
       reason: body.reason,
       source: body.source ?? "plugin",
     });
@@ -109,18 +178,24 @@ export class PluginApiController {
   }
 
   @Post("plugin/orders")
-  async pluginOrders(@Headers("x-api-key") apiKey: string, @Body() body: any) {
+  async pluginOrders(@Headers("x-api-key") apiKey: string, @Body() body: CreatePluginOrderDto) {
     return this.createOrder(apiKey, body);
   }
 
+  @Post("plugin/orders/enhanced")
+  async pluginOrdersEnhanced(@Headers("x-api-key") apiKey: string, @Body() body: CreateEnhancedOrderDto) {
+    return this.createEnhancedOrder(apiKey, body);
+  }
+
   @Post("plugin/orders/feedback")
-  async pluginOrderFeedback(@Headers("x-api-key") apiKey: string, @Body() body: any) {
+  async pluginOrderFeedback(@Headers("x-api-key") apiKey: string, @Body() body: OrderFeedbackDto) {
     return this.addOrderFeedback(apiKey, body);
   }
 
   @Post("plugin/reports")
-  async pluginReports(@Headers("x-api-key") apiKey: string, @Body() body: any) {
+  async pluginReports(@Headers("x-api-key") apiKey: string, @Body() body: PluginReportDto) {
     await this.requireMerchant(apiKey);
     return { success: true, message: "Report queued", data: body };
   }
 }
+

@@ -2,10 +2,10 @@
 
 ## Overview
 This is the backend server for Tunisia Trust Engine, built with:
-- **Strapi CMS** - Content management and admin panel
+- **NestJS** - HTTP application framework
 - **tRPC** - Type-safe API endpoints
-- **Drizzle ORM** - Database ORM with type safety
-- **Better SQLite3** - Embedded database (can be switched to PostgreSQL)
+- **Prisma** - Database ORM and migrations
+- **SQLite** - Local development database
 
 ## Features
 
@@ -39,35 +39,44 @@ pnpm install
 # Start development server with hot reload
 pnpm dev
 
-# Generate database schema
-pnpm db:generate
+# Generate Prisma client
+pnpm prisma:generate
 
-# Push schema to database
-pnpm db:push
-
-# Open database studio
-pnpm db:studio
+# Run development migrations
+pnpm prisma:migrate
 ```
 
 ## API Endpoints
 
-### Orders
-- `POST /trpc/orders.create` - Create a new order
-- `GET /trpc/orders.getAll` - Get all orders (filtered by user)
-- `GET /trpc/orders.getById` - Get specific order details
-- `POST /trpc/orders.updateStatus` - Update order status
-- `POST /trpc/orders.submitFeedback` - Submit feedback for an order
-- `GET /trpc/orders.getPointsHistory` - Get user's points history
-- `GET /trpc/orders.getDashboardStats` - Get dashboard statistics
+### tRPC Routers
+- `auth`: `me`, `register`, `login`, `logout`
+- `merchants`: `getProfile`, `create`, `update`, `regenerateApiKey`, `getDashboard`
+- `orders`: `list`, `updateStatus`, `addFeedback`, `feedbackByOrder`
+- `phoneVerification`: `check`, `reportVerdict`
+- `reports`: `create`, `list`, `get`, `update`
+- `automation`: merchant automation and IA helper procedures
+- `roadmap`: roadmap feature foundations
+
+### Plugin REST
+- `POST /api/plugin/orders`
+- `POST /api/plugin/orders/feedback`
+- `POST /api/plugin/reports`
+- `POST /api/phone-verification/check`
+- `POST /api/spam-phones`
+- `POST /tte/check-order`
+- `POST /tte/order-feedback`
 
 ## Database Schema
 
-### Tables
-- `users` - User accounts with points and tiers
-- `orders` - All orders from all platforms
-- `order_verification_logs` - Detailed verification history
-- `points_history` - Points transaction ledger
-- `feedbacks` - Customer feedback and ratings
+Prisma models live in `prisma/schema.prisma`:
+- `User`
+- `Merchant`
+- `Order`
+- `OrderFeedback`
+- `SpamPhone`
+- `CreditTransaction`
+- `Referral`
+- `Report`
 
 ## Environment Variables
 
@@ -75,14 +84,14 @@ Create a `.env` file based on `.env.example`:
 
 ```env
 DATABASE_URL=file:./sqlite.db
-JWT_SECRET=your-secret-key
-NODE_ENV=development
+JWT_SECRET=replace-with-a-long-random-secret
+CORS_ORIGIN=http://localhost:5173
 ```
 
 ## Testing
 
 ```bash
-pnpm test
+pnpm test:e2e
 ```
 
 ## Deployment

@@ -9,7 +9,15 @@ export class OrdersService {
     private readonly merchants: MerchantsService
   ) {}
 
-  async list(userId: string, filters: any) {
+  async list(
+    userId: string,
+    filters: {
+      status?: string;
+      verificationStatus?: string;
+      offset?: number;
+      limit?: number;
+    }
+  ) {
     const merchant = await this.merchants.getProfile(userId);
     if (!merchant) throw new NotFoundException("Merchant not found");
     return this.prisma.order.findMany({
@@ -38,7 +46,22 @@ export class OrdersService {
     });
   }
 
-  async createFromPlugin(merchantId: string, input: any) {
+  async createFromPlugin(
+    merchantId: string,
+    input: {
+      phoneNumber: string;
+      orderAmount: number;
+      orderId?: string;
+      clientName?: string;
+      source?: string;
+      sourcePlatform?: string;
+      trustScore?: number;
+      riskLevel?: string;
+      verificationStatus?: string;
+      orderStatus?: string;
+      metadata?: any;
+    }
+  ) {
     return this.prisma.order.create({
       data: {
         merchantId,
@@ -46,11 +69,12 @@ export class OrdersService {
         orderAmount: Number(input.orderAmount),
         externalOrderId: input.orderId ?? null,
         clientName: input.clientName ?? null,
-        sourcePlugin: input.source ?? null,
+        sourcePlugin: input.source ?? input.sourcePlatform ?? null,
         trustScore: input.trustScore ?? 50,
         riskLevel: input.riskLevel ?? "medium",
         verificationStatus: input.verificationStatus ?? "pending",
         orderStatus: input.orderStatus ?? "placed",
+        metadata: input.metadata ?? undefined,
       },
     });
   }

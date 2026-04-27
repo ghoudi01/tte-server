@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -37,12 +37,14 @@ model Merchant {
   autoShippingSelectionEnabled Boolean  @default(true)
   trustThresholdForDeposit     Int      @default(40)
   defaultShippingCompany       String   @default("Rapid-Poste")
-  productTypes                 String[] @default([])
+  productTypes                 Json     @default("[]")
   user                         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   orders                       Order[]
   creditTransactions           CreditTransaction[]
   sentReferrals                Referral[] @relation("ReferrerMerchant")
   receivedReferrals            Referral[] @relation("ReferredMerchant")
+  reports                      Report[]
+  webhookSubscriptions         WebhookSubscription[]
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
 }
@@ -126,4 +128,202 @@ model Referral {
 
   @@index([referrerMerchantId, createdAt])
   @@index([referredMerchantId])
+}
+
+model Report {
+  id                   Int      @id @default(autoincrement())
+  merchantId           String
+  clientName           String?
+  phoneNumber          String
+  externalOrderId      String?
+  amount               Float?
+  reportType           String
+  status               String   @default("pending")
+  trackingNumber       String?
+  carrier              String?
+  weight               Float?
+  clientAddress        String?
+  city                 String?
+  orderDate            DateTime?
+  productDescription   String?
+  notes                String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId])
+  @@index([phoneNumber])
+  @@index([createdAt])
+  @@index([status])
+}
+
+model WebhookSubscription {
+  id               String   @id @default(uuid())
+  merchantId       String
+  eventTypes       Json
+  url              String
+  secret           String
+  isActive         Boolean  @default(true)
+  failureCount     Int      @default(0)
+  lastAttemptedAt  DateTime?
+  lastDeliveredAt  DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  merchant         Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, url])
+  @@index([merchantId])
+  @@index([isActive])
+  @@index([lastAttemptedAt])
+}
+
+model WebhookQueue {
+  id         String   @id @default(uuid())
+  eventId    String   @unique
+  eventType  String
+  merchantId String
+  payload    Json
+  queuedAt   DateTime @default(now())
+  attempts   Int      @default(0)
+  lastError  String?
+
+  @@index([merchantId])
+  @@index([queuedAt])
+  @@index([attempts])
+  @@index([eventType])
+}
+
+model WebhookDeliveryLog {
+  id               String   @id @default(uuid())
+  subscriptionId   String?
+  eventId          String
+  payload          Json
+  responseStatus   Int?
+  responseBody     String?
+  errorMessage     String?
+  attemptedAt      DateTime @default(now())
+  succeeded        Boolean
+
+  @@index([eventId])
+  @@index([subscriptionId])
+  @@index([attemptedAt])
+  @@index([succeeded])
+}
+
+model WebhookSignature {
+  id         String   @id @default(uuid())
+  merchantId String
+  provider   String
+  secret     String
+  token      String   @unique
+  createdAt  DateTime @default(now())
+
+  @@unique([merchantId, provider])
+}
+
+/**
+ * Materialized view for phone features (refreshed by cron job)
+ */
+model PhoneFeature {
+  phoneNumber       String   @id
+  totalOrders       Int
+  successfulOrders  Int
+  avgTrustScore     Float
+  firstSeenAt       DateTime?
+  lastSeenAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now())
+
+  @@index([phoneNumber])
+}
+
+/**
+ * Materialized view for merchant features
+ */
+model MerchantFeature {
+  merchantId    String   @id
+  totalOrders   Int
+  avgTrustScore Float
+  fraudOrders   Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now())
+
+  @@index([merchantId])
+}
+
+/**
+ * Materialized view for city/region fraud statistics
+ */
+model CityFeature {
+  city          String   @id
+  totalOrders   Int
+  fraudOrders   Int
+  avgTrustScore Float
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now())
+
+  @@index([city])
+}
+
+/**
+ * Feature refresh job history
+ */
+model FeatureRefreshJob {
+  id            String   @id @default(uuid())
+  viewName      String
+  status        String   // 'pending' | 'running' | 'completed' | 'failed'
+  rowsProcessed Int
+  durationMs    Int?
+  error         String?
+  createdAt     DateTime @default(now())
+  completedAt   DateTime?
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+// A/B Test Configuration
+model ABTestConfig {
+  id              String   @id @default(uuid())
+  name            String
+  description     String
+  baselineVariant Json
+  treatmentVariant Json
+  trafficSplit    Float
+  sampleSize      Int
+  successMetrics  String  // comma-separated list for SQLite compatibility
+  startDate       DateTime
+  endDate         DateTime?
+  status          String   // 'planning' | 'running' | 'completed' | 'stopped'
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  results         ABTestResult[]
+
+  @@index([status])
+  @@index([name])
+}
+
+/**
+ * A/B Test Results
+ */
+model ABTestResult {
+  id                  String   @id @default(uuid())
+  testId              String
+  variant             String
+  orderId             Int
+  predictedFraud      Boolean
+  actualFraud         Boolean
+  processingTimeMs    Int
+  revenueImpact       Float?
+  customerSatisfaction Float?
+  createdAt           DateTime @default(now())
+
+  test                ABTestConfig @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@index([testId])
+  @@index([variant])
+  @@index([createdAt])
 }

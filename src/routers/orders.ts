@@ -19,7 +19,7 @@ export const ordersRouter = router({
     .input(z.object({ orderId: z.number(), orderStatus: z.string() }))
     .mutation(async ({ input, ctx }) => {
       try {
-        return services.orders.updateStatus(ctx.user!.id, input);
+        return await services.orders.updateStatus(ctx.user!.id, input);
       } catch (error) {
         rethrowAsTrpcError(error);
       }
@@ -37,7 +37,7 @@ export const ordersRouter = router({
       try {
         const merchant = await services.merchants.getProfile(ctx.user!.id);
         if (!merchant) throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
-        return services.orders.addFeedback(merchant.id, input);
+        return await services.orders.addFeedback(merchant.id, input);
       } catch (error) {
         rethrowAsTrpcError(error);
       }

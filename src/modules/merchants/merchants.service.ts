@@ -11,7 +11,17 @@ export class MerchantsService {
     return this.prisma.merchant.findFirst({ where: { userId } });
   }
 
-  async create(userId: string, input: any) {
+  async create(
+    userId: string,
+    input: {
+      businessName: string;
+      email: string;
+      phone: string;
+      city?: string;
+      address?: string;
+      productTypes?: string[];
+    }
+  ) {
     return this.prisma.merchant.create({
       data: {
         userId,
@@ -26,7 +36,17 @@ export class MerchantsService {
     });
   }
 
-  async update(userId: string, input: any) {
+  async update(
+    userId: string,
+    input: {
+      businessName?: string;
+      email?: string;
+      phone?: string;
+      city?: string;
+      address?: string;
+      productTypes?: string[];
+    }
+  ) {
     const merchant = await this.getProfile(userId);
     if (!merchant) throw new NotFoundException("Merchant not found");
     return this.prisma.merchant.update({

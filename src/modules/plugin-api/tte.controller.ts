@@ -2,6 +2,7 @@ import { Body, Controller, Headers, Post, UnauthorizedException } from "@nestjs/
 import { OrdersService } from "../orders/orders.service.js";
 import { PhoneVerificationService } from "../phone-verification/phone-verification.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import { CheckOrderDto, OrderFeedbackDto } from "./plugin-api.dto.js";
 
 @Controller("tte")
 export class TteController {
@@ -31,29 +32,22 @@ export class TteController {
   @Post("check-order")
   async checkOrder(
     @Headers("x-api-key") apiKey: string,
-    @Body() body: { phone: string; amount: number; name?: string; address?: string }
+    @Body() body: CheckOrderDto
   ) {
     await this.requireMerchant(apiKey);
     const check = await this.phoneVerification.check(body.phone);
-    return { action: this.mapDecisionAction(check.trustScore, Number(body.amount || 0)) };
+    return { action: this.mapDecisionAction(check.trustScore, body.amount) };
   }
 
   @Post("order-feedback")
   async addOrderFeedback(
     @Headers("x-api-key") apiKey: string,
-    @Body()
-    body: {
-      orderId: number;
-      rating: number;
-      comment?: string;
-      category?: string;
-      source?: string;
-    }
+    @Body() body: OrderFeedbackDto
   ) {
     const merchant = await this.requireMerchant(apiKey);
     const feedback = await this.orders.addFeedback(merchant.id, {
-      orderId: Number(body.orderId),
-      rating: Math.max(1, Math.min(5, Number(body.rating || 0))),
+      orderId: body.orderId,
+      rating: body.rating,
       comment: body.comment,
       category: body.category,
       source: body.source ?? "plugin",

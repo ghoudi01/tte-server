@@ -25,14 +25,14 @@
     "dist/",
     ".cache/",
     ".tmp/",
-
     "config/**",
     "database/**",
     "src/admin/**",
     "src/api/**",
     "src/schema/**",
-    "drizzle.config.ts",
     "src/admin/",
+    "src/tests/",
+    "**/*.spec.*",
     "**/*.test.*",
     "src/plugins/**"
   ]

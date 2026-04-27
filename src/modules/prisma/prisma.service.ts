@@ -13,6 +13,10 @@ export class PrismaService implements OnModuleInit {
     process.on("beforeExit", () => app.close());
   }
 
+  async healthCheck() {
+    await this.client.$queryRaw`SELECT 1`;
+  }
+
   get user() {
     return this.client.user;
   }
@@ -31,6 +35,26 @@ export class PrismaService implements OnModuleInit {
 
   get orderFeedback() {
     return this.client.orderFeedback;
+  }
+
+  get report() {
+    return this.client.report;
+  }
+
+  get webhookSubscription() {
+    return this.client.webhookSubscription;
+  }
+
+  get webhookQueue() {
+    return this.client.webhookQueue;
+  }
+
+  get webhookDeliveryLog() {
+    return this.client.webhookDeliveryLog;
+  }
+
+  get webhookSignature() {
+    return this.client.webhookSignature;
   }
 
   async $disconnect() {

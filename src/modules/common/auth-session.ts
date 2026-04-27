@@ -8,9 +8,17 @@ export type SessionUser = {
 
 const AUTH_COOKIE_NAME = "tte_token";
 
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET is required in production");
+  }
+  return "dev-jwt-secret-change-me";
+}
+
 export function signAuthToken(user: SessionUser) {
-  const secret = process.env.JWT_SECRET || "dev-jwt-secret-change-me";
-  return jwt.sign(user, secret, { expiresIn: "7d" });
+  return jwt.sign(user, getJwtSecret(), { expiresIn: "7d" });
 }
 
 export function readUserFromRequest(req: Request): SessionUser | null {
@@ -20,8 +28,7 @@ export function readUserFromRequest(req: Request): SessionUser | null {
   if (!token) return null;
 
   try {
-    const secret = process.env.JWT_SECRET || "dev-jwt-secret-change-me";
-    const decoded = jwt.verify(token, secret) as SessionUser;
+    const decoded = jwt.verify(token, getJwtSecret()) as SessionUser;
     return { id: decoded.id, email: decoded.email };
   } catch {
     return null;
@@ -35,7 +42,7 @@ export function authCookie(token: string) {
     options: {
       httpOnly: true,
       sameSite: "lax" as const,
-      secure: false,
+      secure: process.env.NODE_ENV === "production",
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     },
