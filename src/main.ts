@@ -4,6 +4,7 @@ import express from "express";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "./routers";
 import { createContext } from "./trpc";
+import { initDatabase } from "./store";
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -29,6 +30,9 @@ app.use(
   })
 );
 
-app.listen(port, "0.0.0.0", () => {
-  console.log(`TTE backend listening on ${port}`);
-});
+void (async () => {
+  await initDatabase();
+  app.listen(port, "0.0.0.0", () => {
+    console.log(`TTE backend listening on ${port}`);
+  });
+})();

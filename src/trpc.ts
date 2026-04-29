@@ -15,7 +15,7 @@ export const createContext = async ({
   res,
 }: CreateExpressContextOptions): Promise<Context> => {
   const sid = req.cookies?.[COOKIE_NAME];
-  const session = sid ? getSessionById(sid) : null;
+  const session = sid ? await getSessionById(sid) : null;
   return {
     req,
     res,

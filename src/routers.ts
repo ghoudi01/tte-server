@@ -34,37 +34,37 @@ const cookieOptions = {
 const authRouter = router({
   login: publicProcedure
     .input(z.object({ email: z.string().email(), password: z.string().min(1) }))
-    .mutation(({ ctx, input }) => {
-      const user = getUserByEmail(input.email);
+    .mutation(async ({ ctx, input }) => {
+      const user = await getUserByEmail(input.email);
       if (!user || user.password !== input.password) {
         throw new TRPCError({
           code: "UNAUTHORIZED",
           message: "Invalid email or password",
         });
       }
-      const session = createSessionForUser(user);
+      const session = await createSessionForUser(user);
       ctx.res.cookie(COOKIE_NAME, session.id, cookieOptions);
       return { success: true, user: session.user };
     }),
   register: publicProcedure
     .input(z.object({ email: z.string().email(), password: z.string().min(6) }))
-    .mutation(({ input }) => {
-      const existing = getUserByEmail(input.email);
+    .mutation(async ({ input }) => {
+      const existing = await getUserByEmail(input.email);
       if (existing) throw new Error("Email already used");
-      const user = createUser(input);
+      const user = await createUser(input);
       return { id: user.id, email: user.email };
     }),
   me: publicProcedure.query(({ ctx }) => ctx.user),
-  logout: publicProcedure.mutation(({ ctx }) => {
+  logout: publicProcedure.mutation(async ({ ctx }) => {
     const sid = ctx.req.cookies?.[COOKIE_NAME];
-    if (sid) deleteSessionById(sid);
+    if (sid) await deleteSessionById(sid);
     ctx.res.clearCookie(COOKIE_NAME, { path: "/" });
     return { success: true };
   }),
 });
 
 const merchantRouter = router({
-  getProfile: protectedProcedure.query(({ ctx }) => getMerchantByUserId(ctx.user.id)),
+  getProfile: protectedProcedure.query(async ({ ctx }) => await getMerchantByUserId(ctx.user.id)),
   create: protectedProcedure
     .input(
       z.object({
@@ -75,9 +75,9 @@ const merchantRouter = router({
         address: z.string().optional(),
       })
     )
-    .mutation(({ ctx, input }) => {
-      if (getMerchantByUserId(ctx.user.id)) throw new Error("Merchant already exists");
-      return createMerchant({
+    .mutation(async ({ ctx, input }) => {
+      if (await getMerchantByUserId(ctx.user.id)) throw new Error("Merchant already exists");
+      return await createMerchant({
         userId: ctx.user.id,
         businessName: input.businessName,
         email: input.email,
@@ -98,20 +98,20 @@ const merchantRouter = router({
         address: z.string().optional(),
       })
     )
-    .mutation(({ ctx, input }) => {
-      const merchant = getMerchantByUserId(ctx.user.id);
+    .mutation(async ({ ctx, input }) => {
+      const merchant = await getMerchantByUserId(ctx.user.id);
       if (!merchant) throw new Error("Merchant not found");
-      return updateMerchant(merchant.id, input);
+      return await updateMerchant(merchant.id, input);
     }),
-  regenerateApiKey: protectedProcedure.mutation(({ ctx }) => {
-    const merchant = getMerchantByUserId(ctx.user.id);
+  regenerateApiKey: protectedProcedure.mutation(async ({ ctx }) => {
+    const merchant = await getMerchantByUserId(ctx.user.id);
     if (!merchant) throw new Error("Merchant not found");
-    return updateMerchant(merchant.id, { apiKey: `tte_${Math.random().toString(36).slice(2)}` });
+    return await updateMerchant(merchant.id, { apiKey: `tte_${Math.random().toString(36).slice(2)}` });
   }),
-  getDashboard: protectedProcedure.query(({ ctx }) => {
-    const merchant = getMerchantByUserId(ctx.user.id);
+  getDashboard: protectedProcedure.query(async ({ ctx }) => {
+    const merchant = await getMerchantByUserId(ctx.user.id);
     if (!merchant) throw new Error(UNAUTHED_ERR_MSG);
-    const merchantOrders = listOrdersByMerchant(merchant.id);
+    const merchantOrders = await listOrdersByMerchant(merchant.id);
     return {
       merchant,
       orders: merchantOrders.slice(-10).reverse(),
@@ -138,10 +138,10 @@ const ordersRouter = router({
         search: z.string().optional(),
       }).optional()
     )
-    .query(({ ctx, input }) => {
-      const merchant = getMerchantByUserId(ctx.user.id);
+    .query(async ({ ctx, input }) => {
+      const merchant = await getMerchantByUserId(ctx.user.id);
       if (!merchant) return [];
-      let data = listOrdersByMerchant(merchant.id);
+      let data = await listOrdersByMerchant(merchant.id);
       if (input?.status) data = data.filter(o => o.status === input.status);
       if (input?.search) data = data.filter(o => o.customerName.includes(input.search || ""));
       return data;
@@ -155,10 +155,10 @@ const ordersRouter = router({
         orderAmount: z.number().nonnegative(),
       })
     )
-    .mutation(({ ctx, input }) => {
-      const merchant = getMerchantByUserId(ctx.user.id);
+    .mutation(async ({ ctx, input }) => {
+      const merchant = await getMerchantByUserId(ctx.user.id);
       if (!merchant) throw new Error("Merchant not found");
-      return createOrder({
+      return await createOrder({
         merchantId: merchant.id,
         customerName: input.customerName,
         phoneNumber: input.phoneNumber,
@@ -170,7 +170,7 @@ const ordersRouter = router({
     }),
   updateStatus: protectedProcedure
     .input(z.object({ orderId: z.string(), status: z.string() }))
-    .mutation(({ input }) => updateOrder(input.orderId, { status: input.status })),
+    .mutation(async ({ input }) => await updateOrder(input.orderId, { status: input.status })),
 });
 
 const phoneVerificationRouter = router({
