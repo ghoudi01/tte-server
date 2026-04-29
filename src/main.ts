@@ -15,11 +15,18 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
   const port = Number(config.get("PORT", 4000));
-  const corsOrigin = config.get("CORS_ORIGIN", "http://localhost:5173");
-  const explicitOrigins = corsOrigin
-    .split(",")
-    .map((v: string) => v.trim())
-    .filter(Boolean);
+   const corsOrigin = config.get("CORS_ORIGIN", "http://localhost:5173");
+   const nodeEnv = config.get("NODE_ENV", "development");
+   let explicitOrigins = corsOrigin
+     .split(",")
+     .map((v: string) => v.trim())
+     .filter(Boolean);
+
+   // Allow Vercel origin in production
+   const vercelOrigin = "https://tte-web.vercel.app";
+   if (nodeEnv === 'production' && !explicitOrigins.includes(vercelOrigin)) {
+     explicitOrigins = [...explicitOrigins, vercelOrigin];
+   }
 
   // Security headers
   app.use(
