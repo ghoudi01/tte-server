@@ -19,6 +19,42 @@ import {
 
 const TUNISIA_PHONE_PATTERN = /^(?:\+?216)?[24579]\d{7}$/;
 
+// ========== Base DTOs (must be first) ==========
+
+export class AddressDto {
+  @IsString()
+  street!: string;
+
+  @IsString()
+  city!: string;
+
+  @IsString()
+  region!: string;
+
+  @IsOptional()
+  @IsString()
+  postalCode?: string;
+
+  @IsString()
+  country!: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  lat?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  lng?: number;
+
+  @IsOptional()
+  @IsString()
+  addressType?: 'home' | 'work' | 'other';
+}
+
 export class PhoneCheckDto {
   @IsString()
   @Matches(TUNISIA_PHONE_PATTERN, {
@@ -103,40 +139,6 @@ export class OrderItemDto {
   @IsNumber()
   @Min(0)
   weight?: number;
-}
-
-export class AddressDto {
-  @IsString()
-  street!: string;
-
-  @IsString()
-  city!: string;
-
-  @IsString()
-  region!: string;
-
-  @IsOptional()
-  @IsString()
-  postalCode?: string;
-
-  @IsString()
-  country!: string;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(-90)
-  @Max(90)
-  lat?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(-180)
-  @Max(180)
-  lng?: number;
-
-  @IsOptional()
-  @IsString()
-  addressType?: 'home' | 'work' | 'other';
 }
 
 export class CreateEnhancedOrderDto {
