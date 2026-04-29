@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { COOKIE_NAME, ONE_YEAR_MS, UNAUTHED_ERR_MSG } from "../shared/const";
 import { router, publicProcedure, protectedProcedure } from "./trpc";
 import {
@@ -36,7 +37,10 @@ const authRouter = router({
     .mutation(({ ctx, input }) => {
       const user = getUserByEmail(input.email);
       if (!user || user.password !== input.password) {
-        throw new Error("Invalid email or password");
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Invalid email or password",
+        });
       }
       const session = createSessionForUser(user);
       ctx.res.cookie(COOKIE_NAME, session.id, cookieOptions);
