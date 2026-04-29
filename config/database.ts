@@ -14,7 +14,7 @@ const config = (): Core.Config.Database => {
       },
       useNullAsDefault: true,
       acquireConnectionTimeout: 60000,
-    },
+    } as unknown as Core.Config.Database['connection'],
   };
 };
 
