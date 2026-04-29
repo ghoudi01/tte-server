@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import cookieParser from "cookie-parser";
 import { json, type NextFunction, type Request, type Response } from "express";
+import cors from "cors";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import { randomUUID } from "node:crypto";
@@ -69,6 +70,22 @@ async function bootstrap() {
     next();
   });
 
+  // CORS
+  const corsOriginDelegate = (
+    origin: string | undefined,
+    callback: (error: Error | null, allow?: boolean) => void
+  ) => {
+    if (!origin) return callback(null, true);
+    if (explicitOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`Origin not allowed: ${origin}`), false);
+  };
+  app.use(
+    cors({
+      origin: corsOriginDelegate,
+      credentials: true,
+    })
+  );
+
   // Rate limiting
   const apiLimiter = rateLimit({
     windowMs: 60 * 1000,
@@ -79,19 +96,6 @@ async function bootstrap() {
   });
   app.use("/api", apiLimiter);
   app.use("/tte", apiLimiter);
-
-  const corsOriginDelegate = (
-    origin: string | undefined,
-    callback: (error: Error | null, allow?: boolean) => void
-  ) => {
-    if (!origin) return callback(null, true);
-    if (explicitOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error(`Origin not allowed: ${origin}`), false);
-  };
-  app.enableCors({
-    origin: corsOriginDelegate,
-    credentials: true,
-  });
 
   // Apply global pipes: sanitize first, then validate
   app.useGlobalPipes(new SanitizationPipe());

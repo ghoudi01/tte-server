@@ -33,18 +33,20 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
     "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
     "express": "^4.21.2",
     "express-rate-limit": "^8.4.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "superjson": "^2.2.2",
     "typescript": "^5",
-    "zod": "^3.24.0",
-    "uuid": "^10.0.0"
+    "uuid": "^10.0.0",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.0.0",
     "@nestjs/testing": "^11.1.6",
+    "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
     "@types/jest": "^29.5.14",
     "@types/supertest": "^6.0.2",
@@ -57,13 +59,22 @@
     "typescript": "^5"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "ts", "json"],
+    "moduleFileExtensions": [
+      "js",
+      "ts",
+      "json"
+    ],
     "testEnvironment": "node",
-    "testMatch": ["**/+(*.)+(spec|test).+(ts|js)?(x)"],
+    "testMatch": [
+      "**/+(*.)+(spec|test).+(ts|js)?(x)"
+    ],
     "transform": {
-      "^.+\\.(ts|tsx)$": ["ts-jest", {
-        "tsconfig": "tsconfig.server.json"
-      }]
+      "^.+\\.(ts|tsx)$": [
+        "ts-jest",
+        {
+          "tsconfig": "tsconfig.server.json"
+        }
+      ]
     },
     "collectCoverageFrom": [
       "src/**/*.ts",
@@ -79,7 +90,9 @@
         "statements": 80
       }
     },
-    "setupFilesAfterEnv": ["<rootDir>/src/tests/setup-after-env.ts"]
+    "setupFilesAfterEnv": [
+      "<rootDir>/src/tests/setup-after-env.ts"
+    ]
   },
   "engines": {
     "node": ">=20.0.0 <=24.x.x",
