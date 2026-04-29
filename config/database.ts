@@ -2,16 +2,13 @@ import type { Core } from '@strapi/strapi';
 
 const config = (): Core.Config.Database => {
   const neonConnectionString =
-    'postgresql://user:password@ep-cool-forest-123456.us-east-2.aws.neon.tech/ttte?sslmode=require';
+    'postgresql://neondb_owner:npg_RoadvjhxX25f@ep-wandering-sky-amnz26sh-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
 
   return {
     connection: {
       client: 'postgres',
       connection: {
         connectionString: neonConnectionString,
-        ssl: {
-          rejectUnauthorized: false,
-        },
         schema: 'public',
       },
       pool: {
