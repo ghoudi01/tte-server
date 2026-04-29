@@ -20,7 +20,7 @@ import {
   explainTrust,
   selectShippingCarrier,
   getGrowthTips,
-} from "../../ia-system/src/tte";
+} from "./ia-client";
 
 const cookieOptions = {
   httpOnly: true,
@@ -172,8 +172,8 @@ const ordersRouter = router({
 const phoneVerificationRouter = router({
   check: protectedProcedure
     .input(z.object({ phoneNumber: z.string().min(1) }))
-    .query(({ input }) => {
-      const score = evaluateAutomationDecision({
+    .query(async ({ input }) => {
+      const score = await evaluateAutomationDecision({
         phoneNumber: input.phoneNumber,
         amount: 0,
         trustThresholdForDeposit: 50,
@@ -213,8 +213,8 @@ const automationRouter = router({
         region: z.string().optional(),
       })
     )
-    .query(({ input }) =>
-      evaluateAutomationDecision({
+    .query(async ({ input }) =>
+      await evaluateAutomationDecision({
         phoneNumber: input.phoneNumber,
         amount: input.orderAmount,
         region: input.region,
@@ -226,10 +226,10 @@ const automationRouter = router({
     ),
   buildWhatsAppMessage: protectedProcedure
     .input(z.object({ phoneNumber: z.string(), orderAmount: z.number().nonnegative() }))
-    .query(({ input }) => ({ message: buildWhatsAppValidationMessage(input) })),
+    .query(async ({ input }) => ({ message: await buildWhatsAppValidationMessage(input) })),
   explainTrustScore: protectedProcedure
     .input(z.object({ trustScore: z.number(), rtoCount: z.number().optional(), successfulOrders: z.number().optional() }))
-    .query(({ input }) => explainTrust(input)),
+    .query(async ({ input }) => await explainTrust(input)),
   recommendShipping: protectedProcedure
     .input(
       z.object({
@@ -237,8 +237,8 @@ const automationRouter = router({
         region: z.string().optional(),
       })
     )
-    .query(({ input }) => ({
-      carrier: selectShippingCarrier({
+    .query(async ({ input }) => ({
+      carrier: await selectShippingCarrier({
         trustScore: input.trustScore,
         region: input.region,
         availableCarriers: [{ name: "Rapid-Poste" }, { name: "Tunisia Express" }],
@@ -253,7 +253,7 @@ const automationRouter = router({
         successRate: z.number().nonnegative(),
       })
     )
-    .query(({ input }) => getGrowthTips(input)),
+    .query(async ({ input }) => await getGrowthTips(input)),
 });
 
 const passthrough = router({

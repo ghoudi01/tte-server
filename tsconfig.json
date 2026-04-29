@@ -16,8 +16,7 @@
   },
   "include": [
     "src/**/*.ts",
-    "shared/**/*.ts",
-    "../ia-system/src/tte/**/*.ts"
+    "shared/**/*.ts"
   ],
 
   "exclude": [
