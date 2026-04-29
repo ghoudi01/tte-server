@@ -449,4 +449,39 @@ export class PluginReportDto {
   @IsString()
   @MaxLength(500)
   notes?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  trackingNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  carrier?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => (value === undefined ? undefined : Number(value)))
+  @IsNumber()
+  @Min(0)
+  weight?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(250)
+  clientAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  orderDate?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  productDescription?: string;
 }

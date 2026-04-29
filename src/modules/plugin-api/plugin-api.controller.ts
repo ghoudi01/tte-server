@@ -194,8 +194,26 @@ export class PluginApiController {
 
   @Post("plugin/reports")
   async pluginReports(@Headers("x-api-key") apiKey: string, @Body() body: PluginReportDto) {
-    await this.requireMerchant(apiKey);
-    return { success: true, message: "Report queued", data: body };
+    const merchant = await this.requireMerchant(apiKey);
+    await this.prisma.report.create({
+      data: {
+        merchantId: merchant.id,
+        phoneNumber: body.phoneNumber,
+        reportType: body.reportType,
+        clientName: body.clientName ?? undefined,
+        externalOrderId: body.externalOrderId ?? undefined,
+        amount: body.amount ?? undefined,
+        notes: body.notes ?? undefined,
+        trackingNumber: body.trackingNumber ?? undefined,
+        carrier: body.carrier ?? undefined,
+        weight: body.weight ?? undefined,
+        clientAddress: body.clientAddress ?? undefined,
+        city: body.city ?? undefined,
+        orderDate: body.orderDate ? new Date(body.orderDate) : undefined,
+        productDescription: body.productDescription ?? undefined,
+      },
+    });
+    return { success: true, message: "Report created" };
   }
 }
 
