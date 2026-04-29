@@ -1,23 +1,30 @@
 {
   "compilerOptions": {
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
     "lib": ["ES2020"],
-    "target": "ES2022",
-    "strict": true,
+    "target": "ES2019",
+    "strict": false,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "incremental": true,
     "esModuleInterop": true,
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
     "resolveJsonModule": true,
     "noEmitOnError": true,
     "noImplicitThis": true,
     "outDir": "dist",
     "rootDir": "."
   },
-  "include": ["src/**/*.ts", "prisma/**/*.ts"],
+  "include": [
+    // Include root files
+    "./",
+    // Include all ts files
+    "./**/*.ts",
+    // Include all js files
+    "./**/*.js",
+    // Force the JSON files in the src folder to be included
+    "src/**/*.json"
+  ],
 
   "exclude": [
     "node_modules/",
@@ -25,15 +32,12 @@
     "dist/",
     ".cache/",
     ".tmp/",
-    "config/**",
-    "database/**",
-    "src/admin/**",
-    "src/api/**",
-    "src/schema/**",
+
+    // Do not include admin files in the server compilation
     "src/admin/",
-    "src/tests/",
-    "**/*.spec.*",
+    // Do not include test files
     "**/*.test.*",
+    // Do not include plugins in the server compilation
     "src/plugins/**"
   ]
 }

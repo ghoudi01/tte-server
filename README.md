@@ -1,317 +1,65 @@
-# TTE Server
+# Tunisia Trust Engine — Strapi Server
 
-NestJS backend server for Tunisia Trust Engine. Provides both tRPC and REST APIs for order management, merchant authentication, phone verification, and plugin integrations.
+Strapi 5 backend for TTE. Aligned with **`docs/PLUGINS_DB_AND_API_SPEC.md`** for plugin API, webhooks, and DB schema.
 
-## Architecture
+## Node version
 
-### Technology Stack
-- **NestJS** - Progressive Node.js framework
-- **tRPC** - Type-safe API endpoints for web dashboard
-- **Express REST** - Plugin integration endpoints
-- **Prisma ORM** - Database migrations and queries
-- **SQLite** - Local development database
-- **JWT** - Authentication tokens
-- **Zod** - Runtime validation
-
-### Project Structure
-
-```
-server/
-├── src/
-│   ├── modules/          # Feature modules
-│   │   ├── auth/         # Authentication module
-│   │   ├── merchants/    # Merchant management
-│   │   ├── orders/       # Order processing
-│   │   ├── phone-verification/  # Phone trust checks
-│   │   ├── reports/      # Report system
-│   │   └── payments/     # Credits and billing
-│   ├── trpc/             # tRPC routers and procedures
-│   ├── routers/          # REST API routes
-│   ├── middleware/       # Custom middleware
-│   ├── config/           # Configuration management
-│   ├── schema/           # Validation schemas
-│   └── tests/            # Test suites
-├── prisma/
-│   ├── schema.prisma     # Database schema
-│   └── migrations/       # Migration files
-├── public/               # Static assets
-└── dist/                 # Compiled output
-```
-
-## Key Features
-
-### Order Management
-- Create orders from multiple sources (WooCommerce, Shopify, Facebook, Instagram, Manual)
-- Track verification status and fraud scores
-- Store detailed verification logs
-- Support for both successful and failed orders
-
-### Points & Rewards System
-- Automatic points calculation for verified orders
-- Bonus points for customer feedback (5 base + 5 for 4-5 stars + 5 extra for 5 stars)
-- Tier system (Bronze, Silver, Gold, Platinum)
-- Complete points history ledger
-
-### Phone Verification
-- Trust score calculation (0-100)
-- Spam detection and reporting
-- Real-time verification checks
-- Ordered verdict feedback loop
-
-### Merchant API Keys
-- Generate and rotate API keys
-- Key-based authentication for plugins
-- Usage tracking per merchant
-
-### Plugin REST Endpoints
-- Receives orders from external platforms
-- Handles phone verification requests
-- Accepts spam/not-spam feedback
-- Sends webhook notifications
-
-## API Endpoints
-
-### tRPC Routers (used by web frontend)
-
-| Router | Procedures | Purpose |
-|--------|------------|---------|
-| `auth` | `me`, `register`, `login`, `logout` | Merchant authentication |
-| `merchants` | `getProfile`, `create`, `update`, `regenerateApiKey`, `getDashboard` | Merchant CRUD |
-| `orders` | `list`, `updateStatus`, `addFeedback`, `feedbackByOrder` | Order management |
-| `phoneVerification` | `check`, `reportVerdict` | Phone trust checks |
-| `reports` | `create`, `list`, `get`, `update` | Issue reports |
-| `automation` | Various | Merchant automation helpers |
-| `roadmap` | Various | Feature flags and roadmap |
-
-### REST Plugin Endpoints
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/plugin/orders` | POST | Create order from plugin |
-| `/api/plugin/orders/feedback` | POST | Submit order feedback |
-| `/api/plugin/reports` | POST | Report issues |
-| `/api/phone-verification/check` | POST | Check phone trust score |
-| `/api/spam-phones` | POST | Report spam number |
-| `/tte/check-order` | POST | Quick order decision (legacy) |
-| `/tte/order-feedback` | POST | Order feedback (legacy) |
-| `/api/webhooks/*` | POST | Webhook event handlers |
-
-## Database Schema
-
-### Core Models
-
-- **User** - Authentication accounts
-- **Merchant** - Business profiles and API keys
-- **Order** - Order records with verification status
-- **OrderFeedback** - Customer ratings and reviews
-- **SpamPhone** - Reported spam/not-spam numbers
-- **CreditTransaction** - Points and credits ledger
-- **Referral** - Referral program tracking
-- **Report** - Merchant-submitted reports
-
-### Prisma Commands
+**Strapi 5 supports Node.js 20, 22, and 24.**
+The SQLite client (`better-sqlite3`) needs native bindings; **Node 25+ has no prebuild** and will show "Could not locate the bindings file". Use Node 22:
 
 ```bash
-# Generate Prisma client
-pnpm prisma:generate
-
-# Run migrations
-pnpm prisma:migrate
-
-# Open Prisma Studio (GUI)
-pnpm prisma:studio
-
-# Reset database (dev only)
-pnpm prisma:reset
+nvm use 22
+cd server && pnpm rebuild better-sqlite3
+pnpm develop
 ```
 
-## Installation & Development
+## Setup
 
-### Setup
+1. **Install dependencies** (from repo root or from `server/`):
 
-```bash
-cd server
-pnpm install
-cp .env.example .env
-```
+   ```bash
+   cd server && pnpm install
+   ```
 
-Edit `.env`:
+2. **Copy env and set secrets**:
 
-```env
-DATABASE_URL="file:./sqlite.db"
-JWT_SECRET="your-super-secret-jwt-key-here"
-CORS_ORIGIN="http://localhost:5173"
-PORT=4000
-NODE_ENV="development"
-```
+   ```bash
+   cp .env.example .env
+   # Edit .env: set APP_KEYS, ADMIN_JWT_SECRET, API_TOKEN_SALT, TRANSFER_TOKEN_SALT, ENCRYPTION_KEY
+   # Generate keys: openssl rand -base64 32
+   ```
 
-### Running
+3. **Database (SQLite)**
+   The DB file is created at `<repo-root>/.tmp/data.db`. Run `mkdir -p .tmp` from the repo root if needed.
+   If you see `Could not locate the bindings file` for `better-sqlite3`, use Node 22 and run `pnpm rebuild better-sqlite3`.
 
-```bash
-# Development with hot reload
-pnpm dev
+4. **Start Strapi**:
 
-# Build for production
-pnpm build
+   ```bash
+   pnpm develop
+   ```
 
-# Start production server
-pnpm start
+   - **Admin:** http://localhost:1337/admin (create first admin on first run)
+   - **API:** http://localhost:1337/api
 
-# Run tests
-pnpm test
-pnpm test:e2e
-```
+## Alignment with PLUGINS_DB_AND_API_SPEC
 
-## Environment Variables
+- **Content types**: Create `merchant`, `order`, `plugin`, `merchant-plugin`, `report`, `phone-verification` (and optionally credits-related) via Content-Type Builder or schema. See `docs/PLUGINS_DB_AND_API_SPEC.md`.
+- **Plugin API (API-key auth)**: Implement `POST /api/plugin/orders`, `POST /api/plugin/reports` with API-key middleware and `getMerchantByApiKey(apiKey)`.
+- **Webhooks**: `POST /api/webhooks/meta`, `GET /api/webhooks/meta` for Meta (Facebook/Instagram).
+- **Credits**: See `docs/CREDITS_PAYMENT_MODEL.md`.
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | Database connection string | `file:./sqlite.db` |
-| `JWT_SECRET` | JWT signing secret | (required) |
-| `CORS_ORIGIN` | Allowed CORS origin | `http://localhost:5173` |
-| `PORT` | Server port | `4000` |
-| `NODE_ENV` | Environment mode | `development` |
-| `IA_SYSTEM_URL` | IA System service URL | (optional) |
+## Commands
 
-## Testing
+| Command          | Description              |
+|------------------|--------------------------|
+| `pnpm develop`   | Dev server + admin       |
+| `pnpm build`     | Build admin + backend    |
+| `pnpm start`     | Production start         |
+| `pnpm strapi`    | Strapi CLI               |
 
-```bash
-# Unit tests
-pnpm test
+## References
 
-# End-to-end tests
-pnpm test:e2e
-
-# Test with coverage
-pnpm test:cov
-```
-
-## Deployment
-
-### Build
-
-```bash
-pnpm build
-pnpm start
-```
-
-### Docker (optional)
-
-```dockerfile
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN pnpm install --frozen-lockfile
-COPY . .
-RUN pnpm build
-
-FROM node:20-alpine
-WORKDIR /app
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
-CMD ["node", "dist/main"]
-```
-
-## Plugin Integration Guide
-
-All plugin endpoints require an `X-API-Key` header with a valid merchant API key.
-
-### Order Creation Example
-
-```javascript
-fetch('http://localhost:4000/api/plugin/orders', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'X-API-Key': 'tte_xxxxxxxxxxxxxxxx'
-  },
-  body: JSON.stringify({
-    externalId: 'SHOP-12345',
-    source: 'shopify',
-    customer: {
-      name: 'Ahmed Ben Ali',
-      phone: '+21698123456',
-      email: 'ahmed@example.com',
-      address: {
-        street: '15 Avenue Habib Bourguiba',
-        city: 'Tunis',
-        region: 'tunis',
-        postalCode: '1000'
-      }
-    },
-    items: [],
-    total: 250.00,
-    paymentMethod: 'cod'
-  })
-});
-```
-
-### Phone Verification Example
-
-```javascript
-fetch('http://localhost:4000/api/phone-verification/check', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'X-API-Key': 'tte_xxxxxxxxxxxxxxxx'
-  },
-  body: JSON.stringify({
-    phoneNumber: '+21698123456',
-    orderId: 'optional-order-id'
-  })
-});
-```
-
-### Spam Reporting Example
-
-```javascript
-fetch('http://localhost:4000/api/spam-phones', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'X-API-Key': 'tte_xxxxxxxxxxxxxxxx'
-  },
-  body: JSON.stringify({
-    phoneNumber: '+21698123456',
-    verdict: 'spam',  // or 'not_spam'
-    orderId: 12345,
-    reason: 'Customer refused after confirmation',
-    source: 'shopify-plugin'
-  })
-});
-```
-
-## Error Handling
-
-API returns standard HTTP status codes:
-
-- `200 OK` - Success
-- `201 Created` - Resource created
-- `400 Bad Request` - Invalid input
-- `401 Unauthorized` - Invalid/missing API key
-- `403 Forbidden` - Insufficient permissions
-- `404 Not Found` - Resource not found
-- `429 Too Many Requests` - Rate limited
-- `500 Internal Server Error` - Server error
-
-Error response format:
-
-```json
-{
-  "error": {
-    "code": "INVALID_INPUT",
-    "message": "Phone number is required",
-    "details": {}
-  }
-}
-```
-
-## Contributing
-
-See `docs/DEVELOPER_ONBOARDING.md` for development setup and coding standards.
-
-## License
-
-MIT
-sss
+- **Spec**: `docs/PLUGINS_DB_AND_API_SPEC.md`
+- **Credits**: `docs/CREDITS_PAYMENT_MODEL.md`
+- **Strapi 5**: https://docs.strapi.io/

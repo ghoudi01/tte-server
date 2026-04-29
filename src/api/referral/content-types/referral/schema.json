@@ -1,0 +1,39 @@
+{
+  "kind": "collectionType",
+  "collectionName": "referrals",
+  "info": {
+    "singularName": "referral",
+    "pluralName": "referrals",
+    "displayName": "Referral",
+    "description": "Referral tracking for user invitations"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "referrer": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "referred": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "referralCode": {
+      "type": "string",
+      "maxLength": 64
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": ["pending", "accepted", "rejected"],
+      "default": "pending"
+    },
+    "creditsAwarded": {
+      "type": "integer",
+      "default": 0
+    }
+  }
+}
