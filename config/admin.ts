@@ -1,23 +1,23 @@
 import type { Core } from '@strapi/strapi';
 
-const config = ({ env }: Core.Config.Shared.ConfigParams): Core.Config.Admin => ({
+const config = (): Core.Config.Admin => ({
   auth: {
-    secret: env('ADMIN_JWT_SECRET', 'default-admin-jwt-secret-change-in-production'),
+    secret: 'tte-admin-jwt-secret',
   },
   apiToken: {
-    salt: env('API_TOKEN_SALT', 'default-api-token-salt-change-in-production'),
+    salt: 'tte-api-token-salt',
   },
   transfer: {
     token: {
-      salt: env('TRANSFER_TOKEN_SALT', 'default-transfer-token-salt'),
+      salt: 'tte-transfer-token-salt',
     },
   },
   secrets: {
-    encryptionKey: env('ENCRYPTION_KEY', 'default-encryption-key-change-in-production'),
+    encryptionKey: 'tte-encryption-key',
   },
   flags: {
-    nps: env.bool('FLAG_NPS', true),
-    promoteEE: env.bool('FLAG_PROMOTE_EE', true),
+    nps: true,
+    promoteEE: true,
   },
 });
 
