@@ -1,0 +1,45 @@
+# Applies the Express backend schema (src/store.ts initDatabase) to Neon.
+# Repo root is this server package — run from repository root (no working-directory: server).
+# DATABASE_URL is inline below (avoid public repos; rotate the Neon password if this file is exposed).
+# Direct endpoint is recommended for DDL; see https://neon.tech/docs/connect/connect-from-any-app .
+name: Neon database sync
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/store.ts"
+      - "scripts/sync-db.ts"
+      - ".github/workflows/neon-db-sync.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  sync-schema:
+    name: Apply schema to Neon
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Sync database schema
+        env:
+          DATABASE_URL: "postgresql://neondb_owner:npg_RoadvjhxX25f@ep-wandering-sky-amnz26sh-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+        run: pnpm run db:sync
