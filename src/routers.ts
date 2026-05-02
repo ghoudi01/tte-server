@@ -135,6 +135,13 @@ const authRouter = router({
         email: z.string().email(),
         password: z.string().min(6),
         referralCode: z.string().optional(),
+        displayName: z.string().min(1).max(200),
+        phone: z.string().min(8).max(40),
+        companyName: z.string().min(1).max(300),
+        companyAddress: z.string().min(1).max(500),
+        companyPhone: z.string().max(40).optional(),
+        companyEmail: z.union([z.string().email(), z.literal("")]).optional(),
+        productTypes: z.array(z.string()).min(1).max(50),
       })
     )
     .mutation(async ({ input }) => {
@@ -147,10 +154,30 @@ const authRouter = router({
       const user = await createUser({
         email: input.email,
         password: input.password,
+        displayName: input.displayName,
       });
       if (referrer) {
         await recordReferralSignup(referrer.id, user.id);
       }
+      const merchantContactEmail =
+        input.companyEmail && input.companyEmail !== "" ? input.companyEmail : input.email;
+      const merchantContactPhone =
+        input.companyPhone && input.companyPhone.trim() !== ""
+          ? input.companyPhone.trim()
+          : input.phone.trim();
+      if (await getMerchantByUserId(user.id)) {
+        throw new TRPCError({ code: "CONFLICT", message: "Merchant already exists" });
+      }
+      await createMerchant({
+        userId: user.id,
+        businessName: input.companyName.trim(),
+        email: merchantContactEmail,
+        phone: merchantContactPhone,
+        address: input.companyAddress.trim(),
+        apiKey: `tte_${Math.random().toString(36).slice(2)}`,
+        status: "active",
+        productCategories: input.productTypes,
+      });
       const token = createHash("sha256").update(`${user.id}:${randomUUID()}`).digest("hex");
       const exp = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       await setEmailVerificationToken(user.id, token, exp);

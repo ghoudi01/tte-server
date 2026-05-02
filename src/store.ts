@@ -28,6 +28,8 @@ type Merchant = {
   rtoRate: number;
   creditsBalance: number;
   referralCode: string;
+  /** Product categories from onboarding (JSON array in DB). */
+  productCategories?: string[];
 };
 
 type Session = {
@@ -60,6 +62,16 @@ const pool = new Pool({
 });
 
 function mapMerchant(row: any): Merchant {
+  let productCategories: string[] | undefined;
+  const rawPc = row.product_categories;
+  if (rawPc != null && rawPc !== "") {
+    try {
+      const p = JSON.parse(String(rawPc));
+      if (Array.isArray(p)) productCategories = p.map(String);
+    } catch {
+      productCategories = undefined;
+    }
+  }
   return {
     id: row.id,
     userId: row.user_id,
@@ -75,6 +87,7 @@ function mapMerchant(row: any): Merchant {
     rtoRate: Number(row.rto_rate ?? 0),
     creditsBalance: Number(row.credits_balance ?? 0),
     referralCode: String(row.referral_code ?? ""),
+    productCategories,
   };
 }
 
@@ -171,6 +184,9 @@ export async function initDatabase() {
   );
   await pool.query(
     `ALTER TABLE merchants ADD COLUMN IF NOT EXISTS referral_code TEXT`
+  );
+  await pool.query(
+    `ALTER TABLE merchants ADD COLUMN IF NOT EXISTS product_categories TEXT`
   );
 
   await pool.query(`
@@ -286,6 +302,7 @@ export async function initDatabase() {
   await pool.query(
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled INTEGER NOT NULL DEFAULT 0`
   );
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS user_notifications (
@@ -415,7 +432,11 @@ export async function getUserById(id: string) {
   return row ? mapUserRow(row as Parameters<typeof mapUserRow>[0]) : null;
 }
 
-export async function createUser(input: { email: string; password: string }) {
+export async function createUser(input: {
+  email: string;
+  password: string;
+  displayName?: string;
+}) {
   const user: User = {
     id: `u_${randomUUID()}`,
     email: input.email,
@@ -426,9 +447,10 @@ export async function createUser(input: { email: string; password: string }) {
     totpSecret: null,
     totpPendingSecret: null,
   };
+  const displayName = input.displayName?.trim() || null;
   await pool.query(
-    `INSERT INTO users (id, email, password, role, email_verified) VALUES ($1, $2, $3, $4, 0)`,
-    [user.id, user.email, user.password, user.role]
+    `INSERT INTO users (id, email, password, role, email_verified, display_name) VALUES ($1, $2, $3, $4, 0, $5)`,
+    [user.id, user.email, user.password, user.role, displayName]
   );
   return user;
 }
@@ -498,12 +520,17 @@ export async function createMerchant(
 ) {
   const id = `m_${randomUUID()}`;
   const referralCode = `ref_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  const productCategoriesJson =
+    input.productCategories && input.productCategories.length > 0
+      ? JSON.stringify(input.productCategories)
+      : null;
   await pool.query(
     `
       INSERT INTO merchants (
         id, user_id, business_name, email, phone, city, address, api_key, status,
-        total_orders, successful_orders, rto_rate, credits_balance, referral_code
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,0,0,0,$10,$11)
+        total_orders, successful_orders, rto_rate, credits_balance, referral_code,
+        product_categories
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,0,0,0,$10,$11,$12)
     `,
     [
       id,
@@ -517,6 +544,7 @@ export async function createMerchant(
       input.status,
       CREDITS.FREE_TRIAL,
       referralCode,
+      productCategoriesJson,
     ]
   );
   await insertCreditLedgerRow(id, "earn", CREDITS.FREE_TRIAL, "free_trial");
@@ -528,12 +556,16 @@ export async function updateMerchant(merchantId: string, patch: Partial<Merchant
   const current = await pool.query(`SELECT * FROM merchants WHERE id = $1 LIMIT 1`, [merchantId]);
   if (!current.rows[0]) return null;
   const merged = { ...mapMerchant(current.rows[0]), ...patch };
+  const productCategoriesJson =
+    merged.productCategories && merged.productCategories.length > 0
+      ? JSON.stringify(merged.productCategories)
+      : null;
   await pool.query(
     `
       UPDATE merchants
       SET business_name = $2, email = $3, phone = $4, city = $5, address = $6, api_key = $7,
           status = $8, total_orders = $9, successful_orders = $10, rto_rate = $11,
-          credits_balance = $12, referral_code = $13
+          credits_balance = $12, referral_code = $13, product_categories = $14
       WHERE id = $1
     `,
     [
@@ -550,6 +582,7 @@ export async function updateMerchant(merchantId: string, patch: Partial<Merchant
       merged.rtoRate,
       merged.creditsBalance,
       merged.referralCode,
+      productCategoriesJson,
     ]
   );
   const res = await pool.query(`SELECT * FROM merchants WHERE id = $1`, [merchantId]);
