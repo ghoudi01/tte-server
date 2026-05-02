@@ -11,6 +11,8 @@ type User = {
   totpEnabled: boolean;
   totpSecret: string | null;
   totpPendingSecret: string | null;
+  /** From users.display_name (registration / profile). */
+  displayName?: string | null;
 };
 
 type Merchant = {
@@ -30,6 +32,8 @@ type Merchant = {
   referralCode: string;
   /** Product categories from onboarding (JSON array in DB). */
   productCategories?: string[];
+  /** Personal mobile from registration (step 1); distinct from business `phone` when company line exists. */
+  contactMobile?: string;
 };
 
 type Session = {
@@ -88,6 +92,9 @@ function mapMerchant(row: any): Merchant {
     creditsBalance: Number(row.credits_balance ?? 0),
     referralCode: String(row.referral_code ?? ""),
     productCategories,
+    contactMobile: row.contact_mobile != null && row.contact_mobile !== ""
+      ? String(row.contact_mobile)
+      : undefined,
   };
 }
 
@@ -187,6 +194,9 @@ export async function initDatabase() {
   );
   await pool.query(
     `ALTER TABLE merchants ADD COLUMN IF NOT EXISTS product_categories TEXT`
+  );
+  await pool.query(
+    `ALTER TABLE merchants ADD COLUMN IF NOT EXISTS contact_mobile TEXT`
   );
 
   await pool.query(`
@@ -397,6 +407,7 @@ function mapUserRow(row: {
   totp_secret?: string | null;
   totp_pending_secret?: string | null;
   totp_enabled?: number | string | null;
+  display_name?: string | null;
 }): User {
   return {
     id: row.id,
@@ -407,13 +418,18 @@ function mapUserRow(row: {
     totpEnabled: Number(row.totp_enabled ?? 0) === 1,
     totpSecret: row.totp_secret ?? null,
     totpPendingSecret: row.totp_pending_secret ?? null,
+    displayName:
+      row.display_name != null && String(row.display_name).trim() !== ""
+        ? String(row.display_name).trim()
+        : null,
   };
 }
 
 export async function getUserByEmail(email: string) {
   const res = await pool.query(
     `SELECT id, email, password, role, COALESCE(email_verified, 1) AS email_verified,
-            totp_secret, totp_pending_secret, COALESCE(totp_enabled, 0) AS totp_enabled
+            totp_secret, totp_pending_secret, COALESCE(totp_enabled, 0) AS totp_enabled,
+            display_name
      FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
     [email]
   );
@@ -424,7 +440,8 @@ export async function getUserByEmail(email: string) {
 export async function getUserById(id: string) {
   const res = await pool.query(
     `SELECT id, email, password, role, COALESCE(email_verified, 1) AS email_verified,
-            totp_secret, totp_pending_secret, COALESCE(totp_enabled, 0) AS totp_enabled
+            totp_secret, totp_pending_secret, COALESCE(totp_enabled, 0) AS totp_enabled,
+            display_name
      FROM users WHERE id = $1 LIMIT 1`,
     [id]
   );
@@ -452,7 +469,14 @@ export async function createUser(input: {
     `INSERT INTO users (id, email, password, role, email_verified, display_name) VALUES ($1, $2, $3, $4, 0, $5)`,
     [user.id, user.email, user.password, user.role, displayName]
   );
-  return user;
+  return { ...user, displayName };
+}
+
+export async function updateUserDisplayName(userId: string, displayName: string | null) {
+  await pool.query(`UPDATE users SET display_name = $2 WHERE id = $1`, [
+    userId,
+    displayName?.trim() || null,
+  ]);
 }
 
 export async function createOAuthUser(email: string) {
@@ -471,7 +495,7 @@ export async function createOAuthUser(email: string) {
     `INSERT INTO users (id, email, password, role, email_verified) VALUES ($1, $2, $3, $4, 1)`,
     [user.id, user.email, user.password, user.role]
   );
-  return user;
+  return { ...user, displayName: null as string | null };
 }
 
 export async function createSessionForUser(user: User) {
@@ -527,10 +551,10 @@ export async function createMerchant(
   await pool.query(
     `
       INSERT INTO merchants (
-        id, user_id, business_name, email, phone, city, address, api_key, status,
+        id, user_id, business_name, email, phone, contact_mobile, city, address, api_key, status,
         total_orders, successful_orders, rto_rate, credits_balance, referral_code,
         product_categories
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,0,0,0,$10,$11,$12)
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,0,0,$11,$12,$13)
     `,
     [
       id,
@@ -538,6 +562,7 @@ export async function createMerchant(
       input.businessName,
       input.email,
       input.phone,
+      input.contactMobile ?? null,
       input.city ?? null,
       input.address ?? null,
       input.apiKey,
@@ -563,9 +588,9 @@ export async function updateMerchant(merchantId: string, patch: Partial<Merchant
   await pool.query(
     `
       UPDATE merchants
-      SET business_name = $2, email = $3, phone = $4, city = $5, address = $6, api_key = $7,
-          status = $8, total_orders = $9, successful_orders = $10, rto_rate = $11,
-          credits_balance = $12, referral_code = $13, product_categories = $14
+      SET business_name = $2, email = $3, phone = $4, contact_mobile = $5, city = $6, address = $7,
+          api_key = $8, status = $9, total_orders = $10, successful_orders = $11, rto_rate = $12,
+          credits_balance = $13, referral_code = $14, product_categories = $15
       WHERE id = $1
     `,
     [
@@ -573,6 +598,7 @@ export async function updateMerchant(merchantId: string, patch: Partial<Merchant
       merged.businessName,
       merged.email,
       merged.phone,
+      merged.contactMobile ?? null,
       merged.city ?? null,
       merged.address ?? null,
       merged.apiKey,

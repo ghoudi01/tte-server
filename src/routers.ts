@@ -49,6 +49,7 @@ import {
   updateOrder,
   updatePaymentOrderProviderId,
   updateUserPasswordAndClearReset,
+  updateUserDisplayName,
   verifySmsOtpChallenge,
 } from "./store";
 import { appContent, homeContent } from "./content";
@@ -173,6 +174,7 @@ const authRouter = router({
         businessName: input.companyName.trim(),
         email: merchantContactEmail,
         phone: merchantContactPhone,
+        contactMobile: input.phone.trim(),
         address: input.companyAddress.trim(),
         apiKey: `tte_${Math.random().toString(36).slice(2)}`,
         status: "active",
@@ -196,9 +198,16 @@ const authRouter = router({
       email: ctx.user.email,
       role: ctx.user.role,
       emailVerified: u?.emailVerified ?? true,
+      displayName: u?.displayName ?? null,
       notificationsUnread: unread,
     };
   }),
+  updateProfile: protectedProcedure
+    .input(z.object({ displayName: z.string().min(1).max(200) }))
+    .mutation(async ({ ctx, input }) => {
+      await updateUserDisplayName(ctx.user.id, input.displayName.trim());
+      return { success: true as const };
+    }),
   requestPasswordReset: publicProcedure
     .input(z.object({ email: z.string().email() }))
     .mutation(async ({ input }) => {
@@ -290,8 +299,10 @@ const merchantRouter = router({
         businessName: z.string().optional(),
         email: z.string().email().optional(),
         phone: z.string().optional(),
+        contactMobile: z.string().max(40).optional(),
         city: z.string().optional(),
         address: z.string().optional(),
+        productCategories: z.array(z.string()).max(50).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
