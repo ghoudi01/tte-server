@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { COOKIE_NAME, ONE_YEAR_MS, UNAUTHED_ERR_MSG } from "../shared/const";
+import { COOKIE_NAME, UNAUTHED_ERR_MSG } from "../shared/const";
 import { CREDITS, CREDIT_PACK_PRICE_MILLIMES, CREDIT_PACK_TOTALS } from "../shared/credits";
 import { createHash, randomUUID } from "node:crypto";
 import { router, publicProcedure, protectedProcedure, adminProcedure } from "./trpc";
@@ -70,14 +70,10 @@ import {
 } from "./payments/env";
 import { flouciGeneratePayment, flouciVerifyPayment } from "./payments/flouci";
 import { isTwilioConfigured, sendSmsE164 } from "./sms/twilio";
-
-const cookieOptions = {
-  httpOnly: true,
-  sameSite: "lax" as const,
-  secure: true,
-  path: "/",
-  maxAge: ONE_YEAR_MS,
-};
+import {
+  getSessionCookieClearOptions,
+  getSessionCookieOptions,
+} from "./session-cookie";
 
 function buildRecentOrdersData(
   orders: { createdAt: string }[],
@@ -124,7 +120,7 @@ const authRouter = router({
         });
       }
       const session = await createSessionForUser(user);
-      ctx.res.cookie(COOKIE_NAME, session.id, cookieOptions);
+      ctx.res.cookie(COOKIE_NAME, session.id, getSessionCookieOptions());
       const ip = ctx.req.ip || ctx.req.socket?.remoteAddress;
       const ua = ctx.req.headers["user-agent"];
       await recordLoginEvent(user.id, typeof ip === "string" ? ip : undefined, typeof ua === "string" ? ua : undefined);
@@ -263,7 +259,7 @@ const authRouter = router({
   logout: publicProcedure.mutation(async ({ ctx }) => {
     const sid = ctx.req.cookies?.[COOKIE_NAME];
     if (sid) await deleteSessionById(sid);
-    ctx.res.clearCookie(COOKIE_NAME, { path: "/" });
+    ctx.res.clearCookie(COOKIE_NAME, getSessionCookieClearOptions());
     return { success: true };
   }),
 });

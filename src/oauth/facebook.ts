@@ -1,14 +1,7 @@
 import type { Express, Request, Response } from "express";
-import { COOKIE_NAME, ONE_YEAR_MS } from "../../shared/const";
+import { COOKIE_NAME } from "../../shared/const";
 import { createOAuthUser, createSessionForUser, getUserByEmail } from "../store";
-
-const cookieOptions = {
-  httpOnly: true,
-  sameSite: "lax" as const,
-  secure: process.env.NODE_ENV === "production",
-  path: "/",
-  maxAge: ONE_YEAR_MS,
-};
+import { getSessionCookieOptions } from "../session-cookie";
 
 function publicWebBase() {
   return (process.env.PUBLIC_URL ?? "http://localhost:5173").replace(/\/$/, "");
@@ -69,7 +62,7 @@ export function registerFacebookOAuth(app: Express): void {
         user = await createOAuthUser(email);
       }
       const session = await createSessionForUser(user);
-      res.cookie(COOKIE_NAME, session.id, cookieOptions);
+      res.cookie(COOKIE_NAME, session.id, getSessionCookieOptions());
       res.redirect(`${publicWebBase()}/dashboard`);
     } catch {
       res.redirect(`${publicWebBase()}/login?oauth=facebook_exception`);
