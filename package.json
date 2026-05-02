@@ -8,8 +8,7 @@
     "start": "tsx src/main.ts",
     "build": "tsc --noEmit",
     "check": "tsc --noEmit",
-    "db:sync": "tsx scripts/sync-db.ts",
-    "db:reset": "tsx scripts/reset-db.ts"
+    "db:sync": "tsx scripts/sync-db.ts"
   },
   "dependencies": {
     "@trpc/server": "^11.6.0",
