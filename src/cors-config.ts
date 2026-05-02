@@ -10,6 +10,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "http://127.0.0.1:3000",
   "https://tte.tn",
   "https://www.tte.tn",
+  "https://tte-web.vercel.app",
 ];
 
 /**
