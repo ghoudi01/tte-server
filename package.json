@@ -7,12 +7,14 @@
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
     "build": "tsc --noEmit",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "db:sync": "tsx scripts/sync-db.ts"
   },
   "dependencies": {
     "@trpc/server": "^11.6.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "express-rate-limit": "^8.4.1",
     "nodemailer": "^8.0.7",

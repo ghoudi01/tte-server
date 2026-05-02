@@ -47,9 +47,15 @@ type Order = {
   createdAt: string;
 };
 
+const databaseUrl = process.env.DATABASE_URL?.trim();
+if (!databaseUrl) {
+  throw new Error(
+    "DATABASE_URL is required (Neon PostgreSQL connection string)."
+  );
+}
+
 const pool = new Pool({
-  connectionString:
-    "postgresql://neondb_owner:npg_RoadvjhxX25f@ep-wandering-sky-amnz26sh-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require",
+  connectionString: databaseUrl,
   ssl: { rejectUnauthorized: false },
 });
 
@@ -222,6 +228,9 @@ export async function initDatabase() {
       created_at TEXT NOT NULL
     );
   `);
+  await pool.query(
+    `ALTER TABLE support_tickets ALTER COLUMN merchant_id DROP NOT NULL`
+  );
   await pool.query(`
     CREATE TABLE IF NOT EXISTS referral_events (
       id TEXT PRIMARY KEY,
@@ -852,7 +861,7 @@ export async function getMerchantReportStats(merchantId: string) {
 }
 
 export async function createSupportTicket(input: {
-  merchantId: string;
+  merchantId: string | null;
   ticketType: "contact" | "report";
   name?: string;
   email?: string;

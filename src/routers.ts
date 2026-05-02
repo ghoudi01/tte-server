@@ -485,7 +485,6 @@ const phoneVerificationRouter = router({
 const automationRouter = router({
   getHomeContent: publicProcedure.query(() => homeContent),
   getAppContent: publicProcedure.query(() => appContent),
-  getRoadmapIdeas: publicProcedure.query(() => []),
   getMerchantConfig: protectedProcedure.query(() => ({
     trustThresholdForDeposit: 50,
     autoShippingSelectionEnabled: true,
@@ -730,7 +729,50 @@ const merchantReportsRouter = router({
     }),
 });
 
+const optionalWebsite = z
+  .string()
+  .max(500)
+  .optional()
+  .refine((s) => !s || /^https?:\/\/.+/i.test(s.trim()), {
+    message: "رابط الموقع يجب أن يبدأ بـ https://",
+  });
+
 const helpDeskRouter = router({
+  /** Anonymous / marketing-site contact (home page). Stored without merchant. */
+  submitPublicContact: publicProcedure
+    .input(
+      z.object({
+        name: z.string().min(1).max(200),
+        email: z.string().email(),
+        phone: z.string().min(3).max(40),
+        message: z.string().min(1).max(10_000),
+        company: z.string().max(200).optional(),
+        website: optionalWebsite,
+        monthlyOrders: z.string().max(50).optional(),
+        subject: z.string().max(120).optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const meta: string[] = [];
+      meta.push(`الهاتف: ${input.phone.trim()}`);
+      const co = input.company?.trim();
+      if (co) meta.push(`الشركة: ${co}`);
+      const web = input.website?.trim();
+      if (web) meta.push(`الموقع: ${web}`);
+      const mo = input.monthlyOrders?.trim();
+      if (mo) meta.push(`الطلبات الشهرية: ${mo}`);
+      const sub = input.subject?.trim();
+      const body = [input.message.trim(), "", "---", ...meta].join("\n");
+      await createSupportTicket({
+        merchantId: null,
+        ticketType: "contact",
+        name: input.name.trim(),
+        email: input.email.trim(),
+        message: body,
+        subject: sub || undefined,
+      });
+      return { success: true as const };
+    }),
   submitContact: protectedProcedure
     .input(
       z.object({

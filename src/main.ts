@@ -1,7 +1,9 @@
+import "dotenv/config";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import express from "express";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
+import { createCorsOptions } from "./cors-config";
 import { appRouter } from "./routers";
 import { registerGoogleOAuth } from "./oauth/google";
 import { registerPaymentRoutes } from "./payments/webhooks";
@@ -12,12 +14,12 @@ import { initDatabase } from "./store";
 const app = express();
 const port = Number(process.env.PORT || 4000);
 
-app.use(
-  cors({
-    origin: true,
-    credentials: true,
-  })
-);
+/** Behind Render/nginx — needed for correct secure cookies / IPs (optional). */
+if (process.env.TRUST_PROXY === "1" || process.env.TRUST_PROXY === "true") {
+  app.set("trust proxy", 1);
+}
+
+app.use(cors(createCorsOptions()));
 app.use(express.json());
 app.use(cookieParser());
 
