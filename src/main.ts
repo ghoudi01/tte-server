@@ -3,6 +3,9 @@ import cookieParser from "cookie-parser";
 import express from "express";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "./routers";
+import { registerGoogleOAuth } from "./oauth/google";
+import { registerPaymentRoutes } from "./payments/webhooks";
+import { registerPluginApiRoutes } from "./plugin-api";
 import { createContext } from "./trpc";
 import { initDatabase } from "./store";
 
@@ -21,6 +24,10 @@ app.use(cookieParser());
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "tte-backend", mode: "trpc" });
 });
+
+registerPaymentRoutes(app);
+registerPluginApiRoutes(app);
+registerGoogleOAuth(app);
 
 app.use(
   "/api/trpc",
