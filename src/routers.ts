@@ -500,16 +500,11 @@ const productsRouter = router({
       if (!merchant) throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
       const success = await deleteProduct(input.id, merchant.id);
       if (!success) throw new TRPCError({ code: "NOT_FOUND", message: "Product not found or unauthorized" });
-      return { success: true };
-    }),
-});
-    }),
-  updateStatus: protectedProcedure
-    .input(z.object({ orderId: z.string(), status: z.string() }))
-    .mutation(async ({ input }) => await updateOrder(input.orderId, { status: input.status })),
-});
+        return { success: true };
+      }),
+  });
 
-const phoneVerificationRouter = router({
+  const phoneVerificationRouter = router({
   /** Preview trust score without spending credits (admin/lab only — dashboard uses verifyPhone). */
   check: protectedProcedure
     .input(z.object({ phoneNumber: z.string().min(1) }))
