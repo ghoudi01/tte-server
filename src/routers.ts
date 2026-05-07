@@ -445,54 +445,63 @@ const productsRouter = router({
     if (!merchant) return [];
     return listProductsByMerchant(merchant.id);
   }),
-  create: protectedProcedure
-    .input(
-      z.object({
-        name: z.string().min(1).max(200),
-        description: z.string().max(1000).optional(),
-        price: z.number().nonnegative(),
-        sku: z.string().max(100).optional(),
-        category: z.string().max(100).optional(),
-        imageUrl: z.string().url().optional().or(z.literal('')),
-        stockQuantity: z.number().int().nonnegative().default(0),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const merchant = await getMerchantByUserId(ctx.user.id);
-      if (!merchant) throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
-      return await insertProduct({
-        merchantId: merchant.id,
-        name: input.name,
-        description: input.description,
-        price: input.price,
-        sku: input.sku,
-        category: input.category,
-        imageUrl: input.imageUrl || undefined,
-        stockQuantity: input.stockQuantity,
-      });
-    }),
-  update: protectedProcedure
-    .input(
-      z.object({
-        id: z.string().min(1),
-        name: z.string().min(1).max(200).optional(),
-        description: z.string().max(1000).optional(),
-        price: z.number().nonnegative().optional(),
-        sku: z.string().max(100).optional(),
-        category: z.string().max(100).optional(),
-        imageUrl: z.string().url().optional().or(z.literal('')),
-        stockQuantity: z.number().int().nonnegative().optional(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const merchant = await getMerchantByUserId(ctx.user.id);
-      if (!merchant) throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
-      const { id, ...patch } = input;
-      if (patch.imageUrl === '') patch.imageUrl = undefined;
-      const updated = await updateProduct(id, merchant.id, patch);
-      if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Product not found or unauthorized" });
-      return updated;
-    }),
+   create: protectedProcedure
+     .input(
+       z.object({
+         name: z.string().min(1).max(200),
+         description: z.string().max(1000).optional(),
+         price: z.number().nonnegative(),
+         sku: z.string().max(100).optional(),
+         category: z.string().max(100).optional(),
+         imageUrl: z.string().url().optional().or(z.literal('')),
+         stockQuantity: z.number().int().nonnegative().default(0),
+         fbIgQuestions: z.record(z.string(), z.any()).optional(),
+         fbIgOptions: z.record(z.string(), z.any()).optional(),
+         fbIgEnabled: z.boolean().default(false),
+       })
+     )
+     .mutation(async ({ ctx, input }) => {
+       const merchant = await getMerchantByUserId(ctx.user.id);
+       if (!merchant) throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
+       return await insertProduct({
+         merchantId: merchant.id,
+         name: input.name,
+         description: input.description,
+         price: input.price,
+         sku: input.sku,
+         category: input.category,
+         imageUrl: input.imageUrl || undefined,
+         stockQuantity: input.stockQuantity,
+         fbIgQuestions: input.fbIgQuestions,
+         fbIgOptions: input.fbIgOptions,
+         fbIgEnabled: input.fbIgEnabled,
+       });
+     }),
+   update: protectedProcedure
+     .input(
+       z.object({
+         id: z.string().min(1),
+         name: z.string().min(1).max(200).optional(),
+         description: z.string().max(1000).optional(),
+         price: z.number().nonnegative().optional(),
+         sku: z.string().max(100).optional(),
+         category: z.string().max(100).optional(),
+         imageUrl: z.string().url().optional().or(z.literal('')),
+         stockQuantity: z.number().int().nonnegative().optional(),
+         fbIgQuestions: z.record(z.string(), z.any()).optional(),
+         fbIgOptions: z.record(z.string(), z.any()).optional(),
+         fbIgEnabled: z.boolean().optional(),
+       })
+     )
+     .mutation(async ({ ctx, input }) => {
+       const merchant = await getMerchantByUserId(ctx.user.id);
+       if (!merchant) throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
+       const { id, ...patch } = input;
+       if (patch.imageUrl === '') patch.imageUrl = undefined;
+       const updated = await updateProduct(id, merchant.id, patch);
+       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Product not found or unauthorized" });
+       return updated;
+     }),
   delete: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {

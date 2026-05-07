@@ -145,25 +145,31 @@ type Product = {
   category?: string;
   imageUrl?: string;
   stockQuantity: number;
+  fbIgQuestions?: Record<string, unknown> | null;
+  fbIgOptions?: Record<string, unknown> | null;
+  fbIgEnabled?: boolean;
   createdAt: string;
   updatedAt: string;
 };
 
 function mapProduct(row: any): Product {
-  return {
-    id: row.id,
-    merchantId: row.merchant_id,
-    name: row.name,
-    description: row.description ?? undefined,
-    price: Number(row.price),
-    sku: row.sku ?? undefined,
-    category: row.category ?? undefined,
-    imageUrl: row.image_url ?? undefined,
-    stockQuantity: Number(row.stock_quantity ?? 0),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
+   return {
+     id: row.id,
+     merchantId: row.merchant_id,
+     name: row.name,
+     description: row.description ?? undefined,
+     price: Number(row.price),
+     sku: row.sku ?? undefined,
+     category: row.category ?? undefined,
+     imageUrl: row.image_url ?? undefined,
+     stockQuantity: Number(row.stock_quantity ?? 0),
+     fbIgQuestions: parseMetadataCell(row.fb_ig_questions),
+     fbIgOptions: parseMetadataCell(row.fb_ig_options),
+     fbIgEnabled: row.fb_ig_enabled ?? false,
+     createdAt: row.created_at,
+     updatedAt: row.updated_at,
+   };
+ }
 
 async function backfillMerchantReferralCodes() {
   const res = await pool.query(
@@ -242,22 +248,25 @@ export async function initDatabase() {
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS metadata JSONB`
   );
 
-  // Products table
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS products (
-      id TEXT PRIMARY KEY,
-      merchant_id TEXT NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      description TEXT,
-      price INTEGER NOT NULL,
-      sku TEXT,
-      category TEXT,
-      image_url TEXT,
-      stock_quantity INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-  `);
+   // Products table
+   await pool.query(`
+     CREATE TABLE IF NOT EXISTS products (
+       id TEXT PRIMARY KEY,
+       merchant_id TEXT NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+       name TEXT NOT NULL,
+       description TEXT,
+       price INTEGER NOT NULL,
+       sku TEXT,
+       category TEXT,
+       image_url TEXT,
+       stock_quantity INTEGER NOT NULL DEFAULT 0,
+       fb_ig_questions JSONB,
+       fb_ig_options JSONB,
+       fb_ig_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+       created_at TEXT NOT NULL,
+       updated_at TEXT NOT NULL
+     );
+   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_products_merchant ON products(merchant_id)`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES products(id) ON DELETE SET NULL`);
 
@@ -829,51 +838,57 @@ export async function listProductsByMerchant(merchantId: string): Promise<Produc
 }
 
 export async function insertProduct(input: Omit<Product, "id" | "createdAt" | "updatedAt">): Promise<Product> {
-  const id = `p_${randomUUID()}`;
-  const now = new Date().toISOString();
-  await pool.query(
-    `INSERT INTO products (id, merchant_id, name, description, price, sku, category, image_url, stock_quantity, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-    [
-      id,
-      input.merchantId,
-      input.name,
-      input.description ?? null,
-      input.price,
-      input.sku ?? null,
-      input.category ?? null,
-      input.imageUrl ?? null,
-      input.stockQuantity,
-      now,
-      now,
-    ]
-  );
-  return { ...input, id, createdAt: now, updatedAt: now } as Product;
-}
+   const id = `p_${randomUUID()}`;
+   const now = new Date().toISOString();
+   await pool.query(
+     `INSERT INTO products (id, merchant_id, name, description, price, sku, category, image_url, stock_quantity, fb_ig_questions, fb_ig_options, fb_ig_enabled, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+     [
+       id,
+       input.merchantId,
+       input.name,
+       input.description ?? null,
+       input.price,
+       input.sku ?? null,
+       input.category ?? null,
+       input.imageUrl ?? null,
+       input.stockQuantity,
+       input.fbIgQuestions ?? null,
+       input.fbIgOptions ?? null,
+       input.fbIgEnabled ?? false,
+       now,
+       now,
+     ]
+   );
+   return { ...input, id, createdAt: now, updatedAt: now } as Product;
+ }
 
 export async function updateProduct(id: string, merchantId: string, patch: Partial<Omit<Product, "id" | "createdAt" | "updatedAt">>): Promise<Product | null> {
-  // Ensure product exists and belongs to merchant
-  const current = await pool.query(`SELECT * FROM products WHERE id = $1 AND merchant_id = $2 LIMIT 1`, [id, merchantId]);
-  if (!current.rows[0]) return null;
-  const existing = mapProduct(current.rows[0]);
-  const merged = { ...existing, ...patch };
-  const now = new Date().toISOString();
-  await pool.query(
-    `UPDATE products SET name = $1, description = $2, price = $3, sku = $4, category = $5, image_url = $6, stock_quantity = $7, updated_at = $8 WHERE id = $9`,
-    [
-      merged.name,
-      merged.description ?? null,
-      merged.price,
-      merged.sku ?? null,
-      merged.category ?? null,
-      merged.imageUrl ?? null,
-      merged.stockQuantity,
-      now,
-      id,
-    ]
-  );
-  return getProductById(id);
-}
+   // Ensure product exists and belongs to merchant
+   const current = await pool.query(`SELECT * FROM products WHERE id = $1 AND merchant_id = $2 LIMIT 1`, [id, merchantId]);
+   if (!current.rows[0]) return null;
+   const existing = mapProduct(current.rows[0]);
+   const merged = { ...existing, ...patch };
+   const now = new Date().toISOString();
+   await pool.query(
+     `UPDATE products SET name = $1, description = $2, price = $3, sku = $4, category = $5, image_url = $6, stock_quantity = $7, fb_ig_questions = $8, fb_ig_options = $9, fb_ig_enabled = $10, updated_at = $11 WHERE id = $12`,
+     [
+       merged.name,
+       merged.description ?? null,
+       merged.price,
+       merged.sku ?? null,
+       merged.category ?? null,
+       merged.imageUrl ?? null,
+       merged.stockQuantity,
+       merged.fbIgQuestions ?? null,
+       merged.fbIgOptions ?? null,
+       merged.fbIgEnabled ?? false,
+       now,
+       id,
+     ]
+   );
+   return getProductById(id);
+ }
 
 export async function deleteProduct(id: string, merchantId: string): Promise<boolean> {
   const res = await pool.query(`DELETE FROM products WHERE id = $1 AND merchant_id = $2 RETURNING id`, [id, merchantId]);
