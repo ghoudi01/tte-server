@@ -10,11 +10,20 @@ export type Context = {
   user: { id: string; email: string; role: "admin" | "merchant" } | null;
 };
 
+function sessionIdFromRequest(req: CreateExpressContextOptions["req"]): string | undefined {
+  const fromCookie = req.cookies?.[COOKIE_NAME];
+  if (typeof fromCookie === "string" && fromCookie.length > 0) return fromCookie;
+  const auth = req.headers.authorization;
+  if (typeof auth !== "string" || !auth.startsWith("Bearer ")) return undefined;
+  const token = auth.slice(7).trim();
+  return token.length > 0 ? token : undefined;
+}
+
 export const createContext = async ({
   req,
   res,
 }: CreateExpressContextOptions): Promise<Context> => {
-  const sid = req.cookies?.[COOKIE_NAME];
+  const sid = sessionIdFromRequest(req);
   const session = sid ? await getSessionById(sid) : null;
   return {
     req,

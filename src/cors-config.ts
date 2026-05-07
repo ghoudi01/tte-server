@@ -59,6 +59,11 @@ export function createCorsOptions(): CorsOptions {
         callback(null, origin);
         return;
       }
+      // Allow Vercel preview environments
+      if (origin.startsWith("https://tte-web") && origin.endsWith(".vercel.app")) {
+        callback(null, origin);
+        return;
+      }
       console.warn(`[cors] blocked Origin: ${origin}`);
       callback(new Error(`CORS: origin not allowed: ${origin}`));
     },

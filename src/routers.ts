@@ -13,10 +13,13 @@ import {
   createSupportTicket,
   createUser,
   creditAggregatesForMerchant,
+  deleteMerchantMetaConnection,
+  deleteMerchantSocialFlow,
   deleteSessionById,
   findRecentVerificationSamePhone,
   getMerchantByReferralCode,
   getMerchantByUserId,
+  getMerchantSocialFlowByKey,
   getMerchantReportStats,
   getUserByEmail,
   insertPhoneVerificationLog,
@@ -26,6 +29,8 @@ import {
   listPhoneVerificationLogs,
   listPluginRows,
   listReferralSummary,
+  listMerchantMetaConnectionsSafe,
+  listMerchantSocialFlows,
   listOrdersByMerchant,
   recordReferralSignup,
   confirmEmailByToken,
@@ -50,8 +55,10 @@ import {
   updatePaymentOrderProviderId,
   updateUserPasswordAndClearReset,
   updateUserDisplayName,
+  upsertMerchantSocialFlow,
   verifySmsOtpChallenge,
 } from "./store";
+import { isMetaTokenCryptoConfigured } from "./meta-token-crypto";
 import { appContent, homeContent } from "./content";
 import {
   evaluateAutomationDecision,
@@ -124,7 +131,24 @@ const authRouter = router({
       const ip = ctx.req.ip || ctx.req.socket?.remoteAddress;
       const ua = ctx.req.headers["user-agent"];
       await recordLoginEvent(user.id, typeof ip === "string" ? ip : undefined, typeof ua === "string" ? ua : undefined);
-      return { success: true, user: session.user };
+      const u = await getUserById(user.id);
+      const unread = await countUnreadNotifications(user.id);
+      /** Same shape as `auth.me` so the SPA can hydrate cache without waiting for a cookie round-trip. */
+      const me = {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        emailVerified: u?.emailVerified ?? true,
+        displayName: u?.displayName ?? null,
+        notificationsUnread: unread,
+      };
+      return {
+        success: true as const,
+        user: session.user,
+        me,
+        /** Client stores this when cookies are unreliable cross-origin (Vercel → Render). Same id as HttpOnly cookie. */
+        sessionToken: session.id,
+      };
     }),
   register: publicProcedure
     .input(
@@ -583,6 +607,11 @@ const PLUGIN_CATALOG = [
   { id: "shopify", nameAr: "Shopify", description: "مزامنة الطلبات والمنتجات" },
   { id: "woocommerce", nameAr: "WooCommerce", description: "وردبريس للتجارة" },
   { id: "facebook-instagram", nameAr: "فيسبوك وإنستغرام", description: "كتالوج ورسائل" },
+  {
+    id: "social-sellers",
+    nameAr: "بياعو فيسبوك وإنستغرام",
+    description: "بوت محادثة وطلبات من Messenger وإنستغرام",
+  },
   { id: "whatsapp-validation", nameAr: "التحقق عبر واتساب", description: "رسائل التحقق" },
 ] as const;
 
@@ -865,6 +894,74 @@ const referralsRouter = router({
   }),
 });
 
+const socialSellersRouter = router({
+  connections: protectedProcedure.query(async ({ ctx }) => {
+    const merchant = await getMerchantByUserId(ctx.user.id);
+    if (!merchant) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
+    }
+    return listMerchantMetaConnectionsSafe(merchant.id);
+  }),
+  flows: protectedProcedure.query(async ({ ctx }) => {
+    const merchant = await getMerchantByUserId(ctx.user.id);
+    if (!merchant) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
+    }
+    return listMerchantSocialFlows(merchant.id);
+  }),
+  saveFlow: protectedProcedure
+    .input(
+      z.object({
+        flowKey: z.string().min(1),
+        displayName: z.string().min(1),
+        definition: z.record(z.string(), z.unknown()),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const merchant = await getMerchantByUserId(ctx.user.id);
+      if (!merchant) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
+      }
+      await upsertMerchantSocialFlow({
+        merchantId: merchant.id,
+        flowKey: input.flowKey,
+        displayName: input.displayName,
+        definition: input.definition,
+      });
+      return { ok: true as const };
+    }),
+  deleteFlow: protectedProcedure
+    .input(z.object({ flowKey: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const merchant = await getMerchantByUserId(ctx.user.id);
+      if (!merchant) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
+      }
+      await deleteMerchantSocialFlow(merchant.id, input.flowKey);
+      return { ok: true as const };
+    }),
+  deleteMetaConnection: protectedProcedure
+    .input(z.object({ connectionId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const merchant = await getMerchantByUserId(ctx.user.id);
+      if (!merchant) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
+      }
+      const ok = await deleteMerchantMetaConnection(merchant.id, input.connectionId);
+      return { ok };
+    }),
+  defaultFlow: protectedProcedure.query(async ({ ctx }) => {
+    const merchant = await getMerchantByUserId(ctx.user.id);
+    if (!merchant) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
+    }
+    return getMerchantSocialFlowByKey(merchant.id, "default");
+  }),
+  metaCryptoConfigured: protectedProcedure.query(() => ({
+    configured: isMetaTokenCryptoConfigured(),
+  })),
+});
+
 const pluginIntegrationsRouter = router({
   catalog: publicProcedure.query(() => [...PLUGIN_CATALOG]),
   listInstalled: protectedProcedure.query(async ({ ctx }) => {
@@ -927,6 +1024,7 @@ export const appRouter = router({
   automation: automationRouter,
   credits: creditsRouter,
   helpDesk: helpDeskRouter,
+  socialSellers: socialSellersRouter,
   pluginIntegrations: pluginIntegrationsRouter,
   referrals: referralsRouter,
   merchantReports: merchantReportsRouter,

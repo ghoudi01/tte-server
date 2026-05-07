@@ -41,7 +41,7 @@ type Session = {
   user: { id: string; email: string; role: "admin" | "merchant" };
 };
 
-type Order = {
+export type Order = {
   id: string;
   merchantId: string;
   customerName: string;
@@ -51,6 +51,8 @@ type Order = {
   status: string;
   verificationStatus: string;
   createdAt: string;
+  /** FB/IG variants, address, channel, Meta IDs — JSON-serializable. */
+  metadata?: Record<string, unknown>;
 };
 
 const databaseUrl = process.env.DATABASE_URL?.trim();
@@ -98,6 +100,21 @@ function mapMerchant(row: any): Merchant {
   };
 }
 
+function parseMetadataCell(raw: unknown): Record<string, unknown> | undefined {
+  if (raw == null) return undefined;
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  try {
+    const p = JSON.parse(String(raw));
+    return typeof p === "object" && p != null && !Array.isArray(p)
+      ? (p as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function mapOrder(row: any): Order {
   return {
     id: row.id,
@@ -109,6 +126,7 @@ function mapOrder(row: any): Order {
     status: row.status,
     verificationStatus: row.verification_status,
     createdAt: row.created_at,
+    metadata: parseMetadataCell(row.metadata),
   };
 }
 
@@ -183,6 +201,46 @@ export async function initDatabase() {
       status TEXT NOT NULL,
       verification_status TEXT NOT NULL,
       created_at TEXT NOT NULL
+    );
+  `);
+  await pool.query(
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS metadata JSONB`
+  );
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS merchant_meta_connections (
+      id TEXT PRIMARY KEY,
+      merchant_id TEXT NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+      facebook_page_id TEXT NOT NULL UNIQUE,
+      instagram_business_account_id TEXT,
+      page_access_token_enc TEXT NOT NULL,
+      token_expires_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS merchant_social_flows (
+      id TEXT PRIMARY KEY,
+      merchant_id TEXT NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+      flow_key TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      definition TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (merchant_id, flow_key)
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS meta_conversation_sessions (
+      id TEXT PRIMARY KEY,
+      merchant_id TEXT NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+      page_id TEXT NOT NULL,
+      sender_id TEXT NOT NULL,
+      channel TEXT NOT NULL,
+      state_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (page_id, sender_id, channel)
     );
   `);
 
@@ -632,8 +690,8 @@ export async function createOrder(input: Omit<Order, "id" | "createdAt">) {
   await pool.query(
     `
       INSERT INTO orders (
-        id, merchant_id, customer_name, phone_number, city, order_amount, status, verification_status, created_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        id, merchant_id, customer_name, phone_number, city, order_amount, status, verification_status, created_at, metadata
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
     `,
     [
       order.id,
@@ -645,6 +703,7 @@ export async function createOrder(input: Omit<Order, "id" | "createdAt">) {
       order.status,
       order.verificationStatus,
       order.createdAt,
+      order.metadata ?? null,
     ]
   );
   return order;
@@ -657,7 +716,8 @@ export async function updateOrder(orderId: string, patch: Partial<Order>) {
   await pool.query(
     `
       UPDATE orders
-      SET customer_name = $2, phone_number = $3, city = $4, order_amount = $5, status = $6, verification_status = $7
+      SET customer_name = $2, phone_number = $3, city = $4, order_amount = $5, status = $6, verification_status = $7,
+          metadata = $8
       WHERE id = $1
     `,
     [
@@ -668,6 +728,7 @@ export async function updateOrder(orderId: string, patch: Partial<Order>) {
       merged.orderAmount,
       merged.status,
       merged.verificationStatus,
+      merged.metadata ?? null,
     ]
   );
   const res = await pool.query(`SELECT * FROM orders WHERE id = $1 LIMIT 1`, [orderId]);
@@ -1495,5 +1556,321 @@ export async function recordPluginWebhookEvent(
   await pool.query(
     `INSERT INTO plugin_webhook_events (id, merchant_id, plugin_id, payload_preview, created_at) VALUES ($1,$2,$3,$4,$5)`,
     [id, merchantId, pluginId, payloadPreview.slice(0, 2000), new Date().toISOString()]
+  );
+}
+
+/** Safe listing — never exposes encrypted token. */
+export type MerchantMetaConnectionSafe = {
+  id: string;
+  merchantId: string;
+  facebookPageId: string;
+  instagramBusinessAccountId?: string;
+  tokenExpiresAt?: string;
+  hasPageToken: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function upsertMerchantMetaConnection(input: {
+  merchantId: string;
+  facebookPageId: string;
+  instagramBusinessAccountId?: string;
+  pageAccessTokenEnc: string;
+  tokenExpiresAt?: string;
+}) {
+  const now = new Date().toISOString();
+  const existing = await getMerchantMetaConnectionByPageId(input.facebookPageId);
+  if (existing) {
+    await pool.query(
+      `
+      UPDATE merchant_meta_connections SET
+        merchant_id = $2,
+        instagram_business_account_id = $3,
+        page_access_token_enc = $4,
+        token_expires_at = $5,
+        updated_at = $6
+      WHERE facebook_page_id = $1
+      `,
+      [
+        input.facebookPageId,
+        input.merchantId,
+        input.instagramBusinessAccountId ?? null,
+        input.pageAccessTokenEnc,
+        input.tokenExpiresAt ?? null,
+        now,
+      ]
+    );
+    return existing.id;
+  }
+  const id = `mmc_${randomUUID()}`;
+  await pool.query(
+    `
+    INSERT INTO merchant_meta_connections (
+      id, merchant_id, facebook_page_id, instagram_business_account_id,
+      page_access_token_enc, token_expires_at, created_at, updated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+    `,
+    [
+      id,
+      input.merchantId,
+      input.facebookPageId,
+      input.instagramBusinessAccountId ?? null,
+      input.pageAccessTokenEnc,
+      input.tokenExpiresAt ?? null,
+      now,
+      now,
+    ]
+  );
+  return id;
+}
+
+/** Resolve Meta webhook `entry.id` (Page or Instagram business account). */
+export async function getMerchantMetaConnectionByPageOrInstagramId(metaEntryId: string) {
+  const res = await pool.query(
+    `
+    SELECT * FROM merchant_meta_connections
+    WHERE facebook_page_id = $1 OR instagram_business_account_id = $1
+    LIMIT 1
+    `,
+    [metaEntryId]
+  );
+  return res.rows[0] as
+    | {
+        id: string;
+        merchant_id: string;
+        facebook_page_id: string;
+        instagram_business_account_id: string | null;
+        page_access_token_enc: string;
+        token_expires_at: string | null;
+        created_at: string;
+        updated_at: string;
+      }
+    | undefined;
+}
+
+export async function getMerchantMetaConnectionByPageId(facebookPageId: string) {
+  const res = await pool.query(
+    `SELECT * FROM merchant_meta_connections WHERE facebook_page_id = $1 LIMIT 1`,
+    [facebookPageId]
+  );
+  return res.rows[0] as
+    | {
+        id: string;
+        merchant_id: string;
+        facebook_page_id: string;
+        instagram_business_account_id: string | null;
+        page_access_token_enc: string;
+        token_expires_at: string | null;
+        created_at: string;
+        updated_at: string;
+      }
+    | undefined;
+}
+
+export async function listMerchantMetaConnectionsSafe(
+  merchantId: string
+): Promise<MerchantMetaConnectionSafe[]> {
+  const res = await pool.query(
+    `SELECT * FROM merchant_meta_connections WHERE merchant_id = $1 ORDER BY created_at DESC`,
+    [merchantId]
+  );
+  return res.rows.map((row: any) => ({
+    id: row.id,
+    merchantId: row.merchant_id,
+    facebookPageId: row.facebook_page_id,
+    instagramBusinessAccountId: row.instagram_business_account_id ?? undefined,
+    tokenExpiresAt: row.token_expires_at ?? undefined,
+    hasPageToken: Boolean(row.page_access_token_enc),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export async function deleteMerchantMetaConnection(merchantId: string, connectionId: string) {
+  const r = await pool.query(
+    `DELETE FROM merchant_meta_connections WHERE id = $1 AND merchant_id = $2`,
+    [connectionId, merchantId]
+  );
+  return r.rowCount !== undefined && r.rowCount > 0;
+}
+
+export type MerchantSocialFlowSafe = {
+  id: string;
+  merchantId: string;
+  flowKey: string;
+  displayName: string;
+  definition: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function listMerchantSocialFlows(merchantId: string): Promise<MerchantSocialFlowSafe[]> {
+  const res = await pool.query(
+    `SELECT * FROM merchant_social_flows WHERE merchant_id = $1 ORDER BY flow_key ASC`,
+    [merchantId]
+  );
+  return res.rows.map((row: any) => ({
+    id: row.id,
+    merchantId: row.merchant_id,
+    flowKey: row.flow_key,
+    displayName: row.display_name,
+    definition: (() => {
+      try {
+        const d = JSON.parse(row.definition as string);
+        return typeof d === "object" && d != null && !Array.isArray(d)
+          ? (d as Record<string, unknown>)
+          : {};
+      } catch {
+        return {};
+      }
+    })(),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export async function upsertMerchantSocialFlow(input: {
+  merchantId: string;
+  flowKey: string;
+  displayName: string;
+  definition: Record<string, unknown>;
+}) {
+  const now = new Date().toISOString();
+  const defStr = JSON.stringify(input.definition);
+  const ex = await pool.query(
+    `SELECT id FROM merchant_social_flows WHERE merchant_id = $1 AND flow_key = $2 LIMIT 1`,
+    [input.merchantId, input.flowKey]
+  );
+  if (ex.rows[0]) {
+    await pool.query(
+      `UPDATE merchant_social_flows SET display_name = $3, definition = $4, updated_at = $5
+       WHERE merchant_id = $1 AND flow_key = $2`,
+      [input.merchantId, input.flowKey, input.displayName, defStr, now]
+    );
+    return (ex.rows[0] as { id: string }).id;
+  }
+  const id = `msf_${randomUUID()}`;
+  await pool.query(
+    `
+    INSERT INTO merchant_social_flows (id, merchant_id, flow_key, display_name, definition, created_at, updated_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7)
+    `,
+    [id, input.merchantId, input.flowKey, input.displayName, defStr, now, now]
+  );
+  return id;
+}
+
+export async function deleteMerchantSocialFlow(merchantId: string, flowKey: string) {
+  await pool.query(
+    `DELETE FROM merchant_social_flows WHERE merchant_id = $1 AND flow_key = $2`,
+    [merchantId, flowKey]
+  );
+}
+
+export async function getMerchantSocialFlowByKey(
+  merchantId: string,
+  flowKey: string
+): Promise<MerchantSocialFlowSafe | null> {
+  const res = await pool.query(
+    `SELECT * FROM merchant_social_flows WHERE merchant_id = $1 AND flow_key = $2 LIMIT 1`,
+    [merchantId, flowKey]
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+  let definition: Record<string, unknown> = {};
+  try {
+    const d = JSON.parse(row.definition as string);
+    if (typeof d === "object" && d != null && !Array.isArray(d)) {
+      definition = d as Record<string, unknown>;
+    }
+  } catch {
+    definition = {};
+  }
+  return {
+    id: row.id,
+    merchantId: row.merchant_id,
+    flowKey: row.flow_key,
+    displayName: row.display_name,
+    definition,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export type MetaConversationSessionState = {
+  phase: "idle" | "variants" | "checkout" | "done";
+  flowKey: string;
+  variantStepIndex: number;
+  checkoutFieldIndex: number;
+  variantAnswers: Record<string, string>;
+  checkoutAnswers: Record<string, string>;
+};
+
+export async function getMetaConversationSession(
+  pageId: string,
+  senderId: string,
+  channel: string
+): Promise<{ merchantId: string; state: MetaConversationSessionState } | null> {
+  const res = await pool.query(
+    `SELECT merchant_id, state_json FROM meta_conversation_sessions
+     WHERE page_id = $1 AND sender_id = $2 AND channel = $3 LIMIT 1`,
+    [pageId, senderId, channel]
+  );
+  const row = res.rows[0] as { merchant_id: string; state_json: string } | undefined;
+  if (!row) return null;
+  try {
+    const state = JSON.parse(row.state_json) as MetaConversationSessionState;
+    return { merchantId: row.merchant_id, state };
+  } catch {
+    return null;
+  }
+}
+
+export async function upsertMetaConversationSession(input: {
+  merchantId: string;
+  pageId: string;
+  senderId: string;
+  channel: string;
+  state: MetaConversationSessionState;
+}) {
+  const now = new Date().toISOString();
+  const existing = await pool.query(
+    `SELECT id FROM meta_conversation_sessions WHERE page_id = $1 AND sender_id = $2 AND channel = $3 LIMIT 1`,
+    [input.pageId, input.senderId, input.channel]
+  );
+  const rowId = (existing.rows[0] as { id: string } | undefined)?.id;
+  if (rowId) {
+    await pool.query(
+      `UPDATE meta_conversation_sessions SET merchant_id = $1, state_json = $2, updated_at = $3 WHERE id = $4`,
+      [input.merchantId, JSON.stringify(input.state), now, rowId]
+    );
+    return;
+  }
+  const id = `mcs_${randomUUID()}`;
+  await pool.query(
+    `
+    INSERT INTO meta_conversation_sessions (id, merchant_id, page_id, sender_id, channel, state_json, updated_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7)
+    `,
+    [
+      id,
+      input.merchantId,
+      input.pageId,
+      input.senderId,
+      input.channel,
+      JSON.stringify(input.state),
+      now,
+    ]
+  );
+}
+
+export async function clearMetaConversationSession(
+  pageId: string,
+  senderId: string,
+  channel: string
+) {
+  await pool.query(
+    `DELETE FROM meta_conversation_sessions WHERE page_id = $1 AND sender_id = $2 AND channel = $3`,
+    [pageId, senderId, channel]
   );
 }

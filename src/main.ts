@@ -7,6 +7,8 @@ import { createCorsOptions } from "./cors-config";
 import { appRouter } from "./routers";
 import { registerGoogleOAuth } from "./oauth/google";
 import { registerPaymentRoutes } from "./payments/webhooks";
+import { registerMetaPageOAuth } from "./meta-oauth";
+import { registerMetaWebhookRoutes } from "./meta-webhook";
 import { registerPluginApiRoutes } from "./plugin-api";
 import { createContext } from "./trpc";
 import { initDatabase } from "./store";
@@ -20,7 +22,13 @@ if (process.env.TRUST_PROXY === "1" || process.env.TRUST_PROXY === "true") {
 }
 
 app.use(cors(createCorsOptions()));
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, _res, buf: Buffer) => {
+      (req as { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+    },
+  })
+);
 app.use(cookieParser());
 
 app.get("/health", (_req, res) => {
@@ -29,6 +37,8 @@ app.get("/health", (_req, res) => {
 
 registerPaymentRoutes(app);
 registerPluginApiRoutes(app);
+registerMetaWebhookRoutes(app);
+registerMetaPageOAuth(app);
 registerGoogleOAuth(app);
 
 app.use(
