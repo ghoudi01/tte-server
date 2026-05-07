@@ -53,6 +53,9 @@ export type Order = {
   createdAt: string;
   /** FB/IG variants, address, channel, Meta IDs — JSON-serializable. */
   metadata?: Record<string, unknown>;
+  /** Optional linked product */
+  productId?: string;
+  productName?: string;
 };
 
 const databaseUrl = process.env.DATABASE_URL?.trim();
@@ -127,6 +130,38 @@ function mapOrder(row: any): Order {
     verificationStatus: row.verification_status,
     createdAt: row.created_at,
     metadata: parseMetadataCell(row.metadata),
+    productId: row.product_id ?? undefined,
+    productName: row.product_name ?? undefined,
+  };
+}
+
+type Product = {
+  id: string;
+  merchantId: string;
+  name: string;
+  description?: string;
+  price: number;
+  sku?: string;
+  category?: string;
+  imageUrl?: string;
+  stockQuantity: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function mapProduct(row: any): Product {
+  return {
+    id: row.id,
+    merchantId: row.merchant_id,
+    name: row.name,
+    description: row.description ?? undefined,
+    price: Number(row.price),
+    sku: row.sku ?? undefined,
+    category: row.category ?? undefined,
+    imageUrl: row.image_url ?? undefined,
+    stockQuantity: Number(row.stock_quantity ?? 0),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -207,6 +242,25 @@ export async function initDatabase() {
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS metadata JSONB`
   );
 
+  // Products table
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS products (
+      id TEXT PRIMARY KEY,
+      merchant_id TEXT NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      description TEXT,
+      price INTEGER NOT NULL,
+      sku TEXT,
+      category TEXT,
+      image_url TEXT,
+      stock_quantity INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_products_merchant ON products(merchant_id)`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES products(id) ON DELETE SET NULL`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS merchant_meta_connections (
       id TEXT PRIMARY KEY,
@@ -278,28 +332,31 @@ export async function initDatabase() {
       created_at TEXT NOT NULL
     );
   `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS merchant_reports (
-      id TEXT PRIMARY KEY,
-      merchant_id TEXT NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-      client_name TEXT NOT NULL,
-      phone TEXT NOT NULL,
-      order_id TEXT NOT NULL,
-      amount INTEGER NOT NULL,
-      report_kind TEXT NOT NULL,
-      review_status TEXT NOT NULL DEFAULT 'pending',
-      tracking_number TEXT,
-      carrier TEXT,
-      weight TEXT,
-      client_address TEXT,
-      city TEXT,
-      order_date TEXT,
-      product_description TEXT,
-      notes TEXT,
-      created_at TEXT NOT NULL
-    );
-  `);
-  await pool.query(`
+   await pool.query(`
+     CREATE TABLE IF NOT EXISTS merchant_reports (
+       id TEXT PRIMARY KEY,
+       merchant_id TEXT NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+       client_name TEXT NOT NULL,
+       phone TEXT NOT NULL,
+       order_id TEXT NOT NULL,
+       amount INTEGER NOT NULL,
+       report_kind TEXT NOT NULL,
+       review_status TEXT NOT NULL DEFAULT 'pending',
+       tracking_number TEXT,
+       carrier TEXT,
+       weight TEXT,
+       client_address TEXT,
+       city TEXT,
+       order_date TEXT,
+       product_description TEXT,
+       notes TEXT,
+       created_at TEXT NOT NULL
+     );
+   `);
+   // Link reports to products (optional)
+   await pool.query(`ALTER TABLE merchant_reports ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES products(id) ON DELETE SET NULL`);
+
+   await pool.query(`
     CREATE TABLE IF NOT EXISTS support_tickets (
       id TEXT PRIMARY KEY,
       merchant_id TEXT NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
@@ -675,7 +732,11 @@ export async function updateMerchant(merchantId: string, patch: Partial<Merchant
 
 export async function listOrdersByMerchant(merchantId: string) {
   const res = await pool.query(
-    `SELECT * FROM orders WHERE merchant_id = $1 ORDER BY created_at DESC`,
+    `SELECT o.*, p.name as product_name, p.id as product_id
+     FROM orders o
+     LEFT JOIN products p ON o.product_id = p.id
+     WHERE o.merchant_id = $1
+     ORDER BY o.created_at DESC`,
     [merchantId]
   );
   return res.rows.map(mapOrder);
@@ -690,8 +751,8 @@ export async function createOrder(input: Omit<Order, "id" | "createdAt">) {
   await pool.query(
     `
       INSERT INTO orders (
-        id, merchant_id, customer_name, phone_number, city, order_amount, status, verification_status, created_at, metadata
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        id, merchant_id, customer_name, phone_number, city, order_amount, status, verification_status, created_at, metadata, product_id
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
     `,
     [
       order.id,
@@ -704,6 +765,7 @@ export async function createOrder(input: Omit<Order, "id" | "createdAt">) {
       order.verificationStatus,
       order.createdAt,
       order.metadata ?? null,
+      order.productId ?? null,
     ]
   );
   return order;
@@ -717,7 +779,7 @@ export async function updateOrder(orderId: string, patch: Partial<Order>) {
     `
       UPDATE orders
       SET customer_name = $2, phone_number = $3, city = $4, order_amount = $5, status = $6, verification_status = $7,
-          metadata = $8
+          metadata = $8, product_id = $9
       WHERE id = $1
     `,
     [
@@ -729,6 +791,7 @@ export async function updateOrder(orderId: string, patch: Partial<Order>) {
       merged.status,
       merged.verificationStatus,
       merged.metadata ?? null,
+      merged.productId ?? null,
     ]
   );
   const res = await pool.query(`SELECT * FROM orders WHERE id = $1 LIMIT 1`, [orderId]);
@@ -749,6 +812,83 @@ export async function getMerchantByReferralCode(code: string) {
   );
   return res.rows[0] ? mapMerchant(res.rows[0]) : null;
 }
+
+// --- Product CRUD ---
+
+export async function getProductById(id: string): Promise<Product | null> {
+  const res = await pool.query(`SELECT * FROM products WHERE id = $1 LIMIT 1`, [id]);
+  return res.rows[0] ? mapProduct(res.rows[0]) : null;
+}
+
+export async function listProductsByMerchant(merchantId: string): Promise<Product[]> {
+  const res = await pool.query(
+    `SELECT * FROM products WHERE merchant_id = $1 ORDER BY updated_at DESC`,
+    [merchantId]
+  );
+  return res.rows.map(mapProduct);
+}
+
+export async function insertProduct(input: Omit<Product, "id" | "createdAt" | "updatedAt">): Promise<Product> {
+  const id = `p_${randomUUID()}`;
+  const now = new Date().toISOString();
+  await pool.query(
+    `INSERT INTO products (id, merchant_id, name, description, price, sku, category, image_url, stock_quantity, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    [
+      id,
+      input.merchantId,
+      input.name,
+      input.description ?? null,
+      input.price,
+      input.sku ?? null,
+      input.category ?? null,
+      input.imageUrl ?? null,
+      input.stockQuantity,
+      now,
+      now,
+    ]
+  );
+  return { ...input, id, createdAt: now, updatedAt: now } as Product;
+}
+
+export async function updateProduct(id: string, merchantId: string, patch: Partial<Omit<Product, "id" | "createdAt" | "updatedAt">>): Promise<Product | null> {
+  // Ensure product exists and belongs to merchant
+  const current = await pool.query(`SELECT * FROM products WHERE id = $1 AND merchant_id = $2 LIMIT 1`, [id, merchantId]);
+  if (!current.rows[0]) return null;
+  const existing = mapProduct(current.rows[0]);
+  const merged = { ...existing, ...patch };
+  const now = new Date().toISOString();
+  await pool.query(
+    `UPDATE products SET name = $1, description = $2, price = $3, sku = $4, category = $5, image_url = $6, stock_quantity = $7, updated_at = $8 WHERE id = $9`,
+    [
+      merged.name,
+      merged.description ?? null,
+      merged.price,
+      merged.sku ?? null,
+      merged.category ?? null,
+      merged.imageUrl ?? null,
+      merged.stockQuantity,
+      now,
+      id,
+    ]
+  );
+  return getProductById(id);
+}
+
+export async function deleteProduct(id: string, merchantId: string): Promise<boolean> {
+  const res = await pool.query(`DELETE FROM products WHERE id = $1 AND merchant_id = $2 RETURNING id`, [id, merchantId]);
+  return res.rowCount !== null && res.rowCount > 0;
+}
+
+export async function assignOrderProduct(orderId: string, merchantId: string, productId: string | null): Promise<Order | null> {
+  const res = await pool.query(
+    `UPDATE orders SET product_id = $1 WHERE id = $2 AND merchant_id = $3 RETURNING *`,
+    [productId ?? null, orderId, merchantId]
+  );
+  return res.rows[0] ? mapOrder(res.rows[0]) : null;
+}
+
+// --- Credits ---
 
 export async function adjustMerchantCredits(
   merchantId: string,
@@ -883,6 +1023,8 @@ export type MerchantReportRow = {
   city?: string;
   orderDate?: string;
   productDescription?: string;
+  productId?: string;
+  productName?: string;
   notes?: string;
   createdAt: string;
 };
@@ -901,18 +1043,32 @@ export async function createMerchantReport(
     clientAddress?: string;
     city?: string;
     orderDate?: string;
+    productId?: string;
     productDescription?: string;
     notes?: string;
   }
 ) {
   const id = `rpt_${randomUUID()}`;
   const createdAt = new Date().toISOString();
+
+  // Resolve product description from product if productId provided
+  let productDescription = input.productDescription;
+  let productId = input.productId;
+  if (productId) {
+    const product = await getProductById(productId);
+    if (product && product.merchantId === merchantId) {
+      productDescription = product.name;
+    } else {
+      productId = undefined; // Invalid or unauthorized product; ignore
+    }
+  }
+
   await pool.query(
     `
       INSERT INTO merchant_reports (
         id, merchant_id, client_name, phone, order_id, amount, report_kind, review_status,
-        tracking_number, carrier, weight, client_address, city, order_date, product_description, notes, created_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        tracking_number, carrier, weight, client_address, city, order_date, product_id, product_description, notes, created_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
     `,
     [
       id,
@@ -928,7 +1084,8 @@ export async function createMerchantReport(
       input.clientAddress ?? null,
       input.city ?? null,
       input.orderDate ?? null,
-      input.productDescription ?? null,
+      productId ?? null,
+      productDescription ?? null,
       input.notes ?? null,
       createdAt,
     ]
@@ -938,7 +1095,11 @@ export async function createMerchantReport(
 
 export async function listMerchantReports(merchantId: string) {
   const res = await pool.query(
-    `SELECT * FROM merchant_reports WHERE merchant_id = $1 ORDER BY created_at DESC`,
+    `SELECT r.*, p.name as product_name, p.id as product_id
+     FROM merchant_reports r
+     LEFT JOIN products p ON r.product_id = p.id
+     WHERE r.merchant_id = $1
+     ORDER BY r.created_at DESC`,
     [merchantId]
   );
   return res.rows.map((row): MerchantReportRow => ({
@@ -957,6 +1118,8 @@ export async function listMerchantReports(merchantId: string) {
     city: row.city ?? undefined,
     orderDate: row.order_date ?? undefined,
     productDescription: row.product_description ?? undefined,
+    productId: row.product_id ?? undefined,
+    productName: row.product_name ?? undefined,
     notes: row.notes ?? undefined,
     createdAt: row.created_at,
   }));
@@ -1431,9 +1594,10 @@ export type AdminMerchantReportRow = MerchantReportRow & { merchantBusinessName:
 
 export async function listMerchantReportsAdmin(filter?: { status?: string }) {
   let sql = `
-    SELECT r.*, m.business_name AS merchant_business_name
+    SELECT r.*, m.business_name AS merchant_business_name, p.name as product_name, p.id as product_id
     FROM merchant_reports r
     JOIN merchants m ON m.id = r.merchant_id
+    LEFT JOIN products p ON r.product_id = p.id
   `;
   const params: string[] = [];
   if (filter?.status) {
@@ -1458,6 +1622,8 @@ export async function listMerchantReportsAdmin(filter?: { status?: string }) {
     city: row.city ? String(row.city) : undefined,
     orderDate: row.order_date ? String(row.order_date) : undefined,
     productDescription: row.product_description ? String(row.product_description) : undefined,
+    productId: row.product_id ? String(row.product_id) : undefined,
+    productName: row.product_name ? String(row.product_name) : undefined,
     notes: row.notes ? String(row.notes) : undefined,
     createdAt: row.created_at as string,
     merchantBusinessName: String(row.merchant_business_name ?? ""),

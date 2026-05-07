@@ -6,6 +6,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { router, publicProcedure, protectedProcedure, adminProcedure } from "./trpc";
 import {
   adjustMerchantCredits,
+  assignOrderProduct,
   createMerchant,
   createMerchantReport,
   createOrder,
@@ -28,6 +29,7 @@ import {
   listMerchantReports,
   listPhoneVerificationLogs,
   listPluginRows,
+  listProductsByMerchant,
   listReferralSummary,
   listMerchantMetaConnectionsSafe,
   listMerchantSocialFlows,
@@ -57,7 +59,11 @@ import {
   updateUserDisplayName,
   upsertMerchantSocialFlow,
   verifySmsOtpChallenge,
-} from "./store";
+   insertProduct,
+   updateProduct,
+   deleteProduct,
+   getProductById,
+ } from "./store";
 import { isMetaTokenCryptoConfigured } from "./meta-token-crypto";
 import { appContent, homeContent } from "./content";
 import {
@@ -398,11 +404,12 @@ const ordersRouter = router({
         phoneNumber: z.string().min(1),
         city: z.string().optional(),
         orderAmount: z.number().nonnegative(),
+        productId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const merchant = await getMerchantByUserId(ctx.user.id);
-      if (!merchant) throw new Error("Merchant not found");
+      if (!merchant) throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
       return await createOrder({
         merchantId: merchant.id,
         customerName: input.customerName,
@@ -411,7 +418,91 @@ const ordersRouter = router({
         orderAmount: input.orderAmount,
         status: "pending",
         verificationStatus: "pending",
+        productId: input.productId ?? undefined,
       });
+    }),
+  updateStatus: protectedProcedure
+    .input(z.object({ orderId: z.string(), status: z.string() }))
+    .mutation(async ({ input }) => await updateOrder(input.orderId, { status: input.status })),
+  assignProduct: protectedProcedure
+    .input(z.object({ orderId: z.string(), productId: z.string().nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      const merchant = await getMerchantByUserId(ctx.user.id);
+      if (!merchant) throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
+      if (input.productId) {
+        const product = await getProductById(input.productId);
+        if (!product || product.merchantId !== merchant.id) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid product" });
+        }
+      }
+      return await assignOrderProduct(input.orderId, merchant.id, input.productId ?? null);
+    }),
+});
+
+const productsRouter = router({
+  list: protectedProcedure.query(async ({ ctx }) => {
+    const merchant = await getMerchantByUserId(ctx.user.id);
+    if (!merchant) return [];
+    return listProductsByMerchant(merchant.id);
+  }),
+  create: protectedProcedure
+    .input(
+      z.object({
+        name: z.string().min(1).max(200),
+        description: z.string().max(1000).optional(),
+        price: z.number().nonnegative(),
+        sku: z.string().max(100).optional(),
+        category: z.string().max(100).optional(),
+        imageUrl: z.string().url().optional().or(z.literal('')),
+        stockQuantity: z.number().int().nonnegative().default(0),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const merchant = await getMerchantByUserId(ctx.user.id);
+      if (!merchant) throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
+      return await insertProduct({
+        merchantId: merchant.id,
+        name: input.name,
+        description: input.description,
+        price: input.price,
+        sku: input.sku,
+        category: input.category,
+        imageUrl: input.imageUrl || undefined,
+        stockQuantity: input.stockQuantity,
+      });
+    }),
+  update: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().min(1),
+        name: z.string().min(1).max(200).optional(),
+        description: z.string().max(1000).optional(),
+        price: z.number().nonnegative().optional(),
+        sku: z.string().max(100).optional(),
+        category: z.string().max(100).optional(),
+        imageUrl: z.string().url().optional().or(z.literal('')),
+        stockQuantity: z.number().int().nonnegative().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const merchant = await getMerchantByUserId(ctx.user.id);
+      if (!merchant) throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
+      const { id, ...patch } = input;
+      if (patch.imageUrl === '') patch.imageUrl = undefined;
+      const updated = await updateProduct(id, merchant.id, patch);
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Product not found or unauthorized" });
+      return updated;
+    }),
+  delete: protectedProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const merchant = await getMerchantByUserId(ctx.user.id);
+      if (!merchant) throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
+      const success = await deleteProduct(input.id, merchant.id);
+      if (!success) throw new TRPCError({ code: "NOT_FOUND", message: "Product not found or unauthorized" });
+      return { success: true };
+    }),
+});
     }),
   updateStatus: protectedProcedure
     .input(z.object({ orderId: z.string(), status: z.string() }))
@@ -778,6 +869,7 @@ const merchantReportsRouter = router({
         clientAddress: z.string().optional(),
         city: z.string().optional(),
         orderDate: z.string().optional(),
+        productId: z.string().optional(),
         productDescription: z.string().optional(),
         notes: z.string().optional(),
       })
@@ -1020,6 +1112,7 @@ export const appRouter = router({
   auth: authRouter,
   merchants: merchantRouter,
   orders: ordersRouter,
+  products: productsRouter,
   phoneVerification: phoneVerificationRouter,
   automation: automationRouter,
   credits: creditsRouter,
