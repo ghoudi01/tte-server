@@ -18,6 +18,8 @@ import {
   deleteMerchantSocialFlow,
   deleteSessionById,
   findRecentVerificationSamePhone,
+  getMerchantByEmail,
+  getMerchantByPhone,
   getMerchantByReferralCode,
   getMerchantByUserId,
   getMerchantSocialFlowByKey,
@@ -88,6 +90,34 @@ import {
   getSessionCookieOptions,
 } from "./session-cookie";
 
+function buildRegionalDistribution(orders: { city?: string }[]): { region: string; count: number }[] {
+  const cityCount: Record<string, number> = {};
+  for (const o of orders) {
+    const c = o.city || "أخرى";
+    cityCount[c] = (cityCount[c] ?? 0) + 1;
+  }
+  return Object.entries(cityCount)
+    .map(([region, count]) => ({ region, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function computeMonthlyGrowth(orders: { createdAt: string }[]): number {
+  if (orders.length < 2) return 0;
+  const now = new Date();
+  const thisMonth = orders.filter(o => {
+    const d = new Date(o.createdAt);
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
+  const lastMonth = orders.filter(o => {
+    const d = new Date(o.createdAt);
+    const lm = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+    const ly = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+    return d.getMonth() === lm && d.getFullYear() === ly;
+  }).length;
+  if (lastMonth === 0) return thisMonth > 0 ? 100 : 0;
+  return Math.round(((thisMonth - lastMonth) / lastMonth) * 100);
+}
+
 function buildRecentOrdersData(
   orders: { createdAt: string }[],
   days = 14
@@ -118,7 +148,10 @@ const authRouter = router({
       process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET
         ? `${api}/api/auth/google/start`
         : null;
-    const facebook = null; // set env + implement /api/auth/facebook when App ID is available
+    const facebook =
+      process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET
+        ? `${api}/api/auth/facebook/start`
+        : null;
     return { google, facebook };
   }),
 
@@ -163,7 +196,7 @@ const authRouter = router({
         password: z.string().min(6),
         referralCode: z.string().optional(),
         displayName: z.string().min(1).max(200),
-        phone: z.string().min(8).max(40),
+        phone: z.string().regex(/^\+?216\d{8}$|^\d{8,15}$/, "رقم هاتف تونسي غير صحيح"),
         companyName: z.string().min(1).max(300),
         companyAddress: z.string().min(1).max(500),
         companyPhone: z.string().max(40).optional(),
@@ -214,6 +247,27 @@ const authRouter = router({
         console.log(`[TTE] Email verification link for ${user.email}: ${link}`);
       }
       return { id: user.id, email: user.email, verifyLinkDev: process.env.NODE_ENV !== "production" ? link : undefined };
+    }),
+  checkRegisterAvailability: publicProcedure
+    .input(z.object({
+      email: z.string().email(),
+      phone: z.string(),
+      companyEmail: z.string().optional(),
+      companyPhone: z.string().optional(),
+    }))
+    .query(async ({ input }) => {
+      const [emailUser, phoneMerchant, companyEmailMerchant, companyPhoneMerchant] = await Promise.all([
+        getUserByEmail(input.email),
+        getMerchantByPhone(input.phone),
+        input.companyEmail ? getMerchantByEmail(input.companyEmail) : Promise.resolve(null),
+        input.companyPhone ? getMerchantByPhone(input.companyPhone) : Promise.resolve(null),
+      ]);
+      return {
+        emailTaken: !!emailUser,
+        phoneTaken: !!phoneMerchant,
+        companyEmailTaken: !!companyEmailMerchant,
+        companyPhoneTaken: !!companyPhoneMerchant,
+      };
     }),
   me: publicProcedure.query(async ({ ctx }) => {
     if (!ctx.user) return null;
@@ -357,10 +411,10 @@ const merchantRouter = router({
         successRate: merchantOrders.length
           ? Math.round((merchantOrders.filter(o => o.status === "delivered").length / merchantOrders.length) * 100)
           : 0,
-        rtoRate: merchant.rtoRate,
+        rtoRate: merchant.rtoRate ?? 0,
         recentOrdersData,
-        regionalDistribution: [],
-        monthlyGrowth: 0,
+        regionalDistribution: buildRegionalDistribution(merchantOrders),
+        monthlyGrowth: computeMonthlyGrowth(merchantOrders),
         pointsEarned: creditAgg.earned,
         pointsSpent: creditAgg.spent,
         creditsBalance: creditAgg.balance,
@@ -517,7 +571,7 @@ const productsRouter = router({
   /** Preview trust score without spending credits (admin/lab only — dashboard uses verifyPhone). */
   check: protectedProcedure
     .input(z.object({ phoneNumber: z.string().min(1) }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const score = await evaluateAutomationDecision({
         phoneNumber: input.phoneNumber,
         amount: 0,
@@ -526,12 +580,17 @@ const productsRouter = router({
         defaultShippingCompany: "Rapid-Poste",
         shippingPartners: [{ name: "Rapid-Poste", focus: "national", status: "available" }],
       });
+      const merchant = await getMerchantByUserId(ctx.user.id);
+      const allOrders = merchant ? await listOrdersByMerchant(merchant.id) : [];
+      const phoneOrders = allOrders.filter(o => o.phoneNumber === input.phoneNumber);
+      const rtoCount = phoneOrders.filter(o => o.status === "returned").length;
+      const successfulOrders = phoneOrders.filter(o => o.status === "delivered").length;
       return {
         phoneNumber: input.phoneNumber,
         trustScore: score.trustScore,
         isVerified: score.trustScore >= 60,
-        rtoCount: 0,
-        successfulOrders: 0,
+        rtoCount,
+        successfulOrders,
         riskLevel: score.riskLevel,
       };
     }),
@@ -576,12 +635,16 @@ const productsRouter = router({
         creditsSpent: cost,
       });
       const next = await getMerchantByUserId(ctx.user.id);
+      const allOrders = await listOrdersByMerchant(merchant.id);
+      const phoneOrders = allOrders.filter(o => o.phoneNumber === input.phoneNumber.trim());
+      const rtoCount = phoneOrders.filter(o => o.status === "returned").length;
+      const successfulOrders = phoneOrders.filter(o => o.status === "delivered").length;
       return {
         phoneNumber: input.phoneNumber.trim(),
         trustScore: score.trustScore,
         isVerified: score.trustScore >= 60,
-        rtoCount: 0,
-        successfulOrders: 0,
+        rtoCount,
+        successfulOrders,
         riskLevel: score.riskLevel,
         creditsBalance: next!.creditsBalance,
         creditsSpent: cost,
@@ -616,7 +679,7 @@ const productsRouter = router({
       return { sent: true as const };
     }),
   confirmSmsOtp: protectedProcedure
-    .input(z.object({ phone: z.string().min(8), code: z.string().length(6) }))
+    .input(z.object({ phone: z.string().regex(/^\+?216\d{8}$|^\d{8}$/).or(z.string().min(8)), code: z.string().length(6) }))
     .mutation(async ({ ctx, input }) => {
       const merchant = await getMerchantByUserId(ctx.user.id);
       if (!merchant) {
@@ -638,15 +701,48 @@ const productsRouter = router({
 const automationRouter = router({
   getHomeContent: publicProcedure.query(() => homeContent),
   getAppContent: publicProcedure.query(() => appContent),
-  getMerchantConfig: protectedProcedure.query(() => ({
-    trustThresholdForDeposit: 50,
-    autoShippingSelectionEnabled: true,
-    defaultShippingCompany: "Rapid-Poste",
-    shippingPartners: [{ name: "Rapid-Poste", focus: "national", status: "available" }],
-  })),
+  getMerchantConfig: protectedProcedure.query(async ({ ctx }) => {
+    const merchant = await getMerchantByUserId(ctx.user.id);
+    if (!merchant) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
+    }
+    const config = merchant.automationConfig
+      ? (typeof merchant.automationConfig === "string"
+          ? JSON.parse(merchant.automationConfig)
+          : merchant.automationConfig)
+      : {};
+    return {
+      trustThresholdForDeposit: config.trustThresholdForDeposit ?? 50,
+      autoShippingSelectionEnabled: config.autoShippingSelectionEnabled ?? true,
+      defaultShippingCompany: config.defaultShippingCompany ?? "Rapid-Poste",
+      shippingPartners: config.shippingPartners ?? [
+        { name: "Rapid-Poste", focus: "national", status: "available" },
+      ],
+    };
+  }),
   updateMerchantConfig: protectedProcedure
-    .input(z.record(z.string(), z.any()))
-    .mutation(({ input }) => ({ success: true, config: input })),
+    .input(
+      z.object({
+        trustThresholdForDeposit: z.number().min(0).max(100).optional(),
+        autoShippingSelectionEnabled: z.boolean().optional(),
+        defaultShippingCompany: z.string().optional(),
+        shippingPartners: z.array(z.object({ name: z.string(), focus: z.string(), status: z.string() })).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const merchant = await getMerchantByUserId(ctx.user.id);
+      if (!merchant) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
+      }
+      const existing = merchant.automationConfig
+        ? (typeof merchant.automationConfig === "string"
+            ? JSON.parse(merchant.automationConfig)
+            : merchant.automationConfig)
+        : {};
+      const merged = { ...existing, ...input };
+      await updateMerchant(merchant.id, { automationConfig: merged });
+      return { success: true, config: merged };
+    }),
   simulateOrderDecision: protectedProcedure
     .input(
       z.object({

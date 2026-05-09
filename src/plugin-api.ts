@@ -109,17 +109,45 @@ export function registerPluginApiRoutes(app: Express): void {
 
   app.post("/api/plugin/webhooks/shopify", async (req: Request, res: Response) => {
     await withMerchant(req, res, "POST /api/plugin/webhooks/shopify", async merchantId => {
-      const preview = JSON.stringify(req.body ?? {}).slice(0, 1500);
+      const body = req.body as Record<string, any> ?? {};
+      const preview = JSON.stringify(body).slice(0, 1500);
       await recordPluginWebhookEvent(merchantId, "shopify", preview);
-      res.json({ ok: true });
+      if (body.id && body.customer) {
+        try {
+          await createOrder({
+            merchantId,
+            customerName: body.customer?.first_name + " " + (body.customer?.last_name ?? ""),
+            phoneNumber: body.customer?.phone ?? body.shipping_address?.phone ?? "",
+            city: body.shipping_address?.city,
+            orderAmount: Number(body.total_price ?? body.current_total_price ?? 0),
+            status: "pending",
+            verificationStatus: "pending",
+          });
+        } catch {}
+      }
+      res.json({ ok: true, synced: true });
     });
   });
 
   app.post("/api/plugin/webhooks/woocommerce", async (req: Request, res: Response) => {
     await withMerchant(req, res, "POST /api/plugin/webhooks/woocommerce", async merchantId => {
-      const preview = JSON.stringify(req.body ?? {}).slice(0, 1500);
+      const body = req.body as Record<string, any> ?? {};
+      const preview = JSON.stringify(body).slice(0, 1500);
       await recordPluginWebhookEvent(merchantId, "woocommerce", preview);
-      res.json({ ok: true });
+      if (body.id && body.billing) {
+        try {
+          await createOrder({
+            merchantId,
+            customerName: body.billing?.first_name + " " + (body.billing?.last_name ?? ""),
+            phoneNumber: body.billing?.phone ?? "",
+            city: body.billing?.city,
+            orderAmount: Number(body.total ?? 0),
+            status: "pending",
+            verificationStatus: "pending",
+          });
+        } catch {}
+      }
+      res.json({ ok: true, synced: true });
     });
   });
 }

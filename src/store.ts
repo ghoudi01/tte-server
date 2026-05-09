@@ -34,6 +34,8 @@ type Merchant = {
   productCategories?: string[];
   /** Personal mobile from registration (step 1); distinct from business `phone` when company line exists. */
   contactMobile?: string;
+  /** JSON-encoded automation configuration object. */
+  automationConfig?: Record<string, unknown>;
 };
 
 type Session = {
@@ -818,6 +820,23 @@ export async function getMerchantByReferralCode(code: string) {
   const res = await pool.query(
     `SELECT * FROM merchants WHERE LOWER(referral_code) = LOWER($1) LIMIT 1`,
     [code.trim()]
+  );
+  return res.rows[0] ? mapMerchant(res.rows[0]) : null;
+}
+
+export async function getMerchantByPhone(phone: string) {
+  const normalized = phone.trim().replace(/^\+/, "");
+  const res = await pool.query(
+    `SELECT * FROM merchants WHERE REPLACE(phone, '+', '') = $1 LIMIT 1`,
+    [normalized]
+  );
+  return res.rows[0] ? mapMerchant(res.rows[0]) : null;
+}
+
+export async function getMerchantByEmail(email: string) {
+  const res = await pool.query(
+    `SELECT * FROM merchants WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+    [email.trim()]
   );
   return res.rows[0] ? mapMerchant(res.rows[0]) : null;
 }
