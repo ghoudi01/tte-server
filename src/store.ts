@@ -809,6 +809,94 @@ export async function updateOrder(orderId: string, patch: Partial<Order>) {
   return res.rows[0] ? mapOrder(res.rows[0]) : null;
 }
 
+const AUTO_REPORT_STATUSES = ["returned", "delivered"] as const;
+
+export async function updateOrderStatus(
+  orderId: string,
+  newStatus: string,
+  merchantId: string
+) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // 1. Update order status
+    const cur = await client.query(`SELECT * FROM orders WHERE id = $1 LIMIT 1`, [orderId]);
+    if (!cur.rows[0]) {
+      await client.query("ROLLBACK");
+      return { ok: false, reason: "not_found" } as const;
+    }
+    const prev = mapOrder(cur.rows[0]);
+
+    if (prev.merchantId !== merchantId) {
+      await client.query("ROLLBACK");
+      return { ok: false, reason: "forbidden" } as const;
+    }
+
+    await client.query(
+      `UPDATE orders SET status = $2 WHERE id = $1`,
+      [orderId, newStatus]
+    );
+
+    // 2. Auto-create report for relevant statuses
+    if (AUTO_REPORT_STATUSES.includes(newStatus as typeof AUTO_REPORT_STATUSES[number])) {
+      // Check for existing report (prevent duplicates)
+      const existing = await client.query(
+        `SELECT id FROM merchant_reports WHERE order_id = $1 LIMIT 1`,
+        [orderId]
+      );
+      if (!existing.rows[0]) {
+        // Spend credits
+        const abs = CREDITS.REPORT_CREATE;
+        const u = await client.query(
+          `UPDATE merchants SET credits_balance = credits_balance - $1::int WHERE id = $2 AND credits_balance >= $3::int RETURNING credits_balance`,
+          [abs, merchantId, abs]
+        );
+        if (u.rowCount === 0) {
+          await client.query("ROLLBACK");
+          return { ok: false, reason: "insufficient_credits" } as const;
+        }
+
+        // Record credit transaction
+        const txId = `ct_${randomUUID()}`;
+        await client.query(
+          `INSERT INTO credit_transactions (id, merchant_id, direction, amount, reason, created_at)
+           VALUES ($1, $2, 'spend', $3, 'report_create', $4)`,
+          [txId, merchantId, abs, new Date().toISOString()]
+        );
+
+        // Create report
+        const reportKind = newStatus === "returned" ? "rto" : "delivery";
+        const reportId = `rpt_${randomUUID()}`;
+        await client.query(
+          `INSERT INTO merchant_reports (
+            id, merchant_id, client_name, phone, order_id, amount, report_kind, review_status, city, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9)`,
+          [
+            reportId,
+            merchantId,
+            prev.customerName,
+            prev.phoneNumber,
+            orderId,
+            prev.orderAmount,
+            reportKind,
+            prev.city ?? null,
+            new Date().toISOString(),
+          ]
+        );
+      }
+    }
+
+    await client.query("COMMIT");
+    return { ok: true, reason: null } as const;
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 export async function getMerchantById(merchantId: string) {
   const res = await pool.query(`SELECT * FROM merchants WHERE id = $1 LIMIT 1`, [
     merchantId,
@@ -1062,6 +1150,14 @@ export type MerchantReportRow = {
   notes?: string;
   createdAt: string;
 };
+
+export async function findReportByOrderId(orderId: string) {
+  const res = await pool.query(
+    `SELECT id FROM merchant_reports WHERE order_id = $1 LIMIT 1`,
+    [orderId]
+  );
+  return res.rows[0] ? (res.rows[0] as { id: string }).id : null;
+}
 
 export async function createMerchantReport(
   merchantId: string,

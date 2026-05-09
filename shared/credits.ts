@@ -4,6 +4,7 @@
 export const CREDITS = {
   CHECK_PHONE: 5,
   REFRESH_PHONE: 2,
+  REPORT_CREATE: 1,
   REPORT_ACCEPTED: 2,
   REFERRAL_FIRST_CHECK: 3,
   REFERRAL_SIGNUP: 1,
@@ -30,6 +31,7 @@ export const CREDIT_PACK_PRICE_MILLIMES: Record<string, number> = {
 export type CreditReason =
   | "check_phone"
   | "refresh_phone"
+  | "report_create"
   | "report_accepted"
   | "referral_first_check"
   | "referral_signup"

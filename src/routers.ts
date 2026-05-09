@@ -56,6 +56,7 @@ import {
   setPasswordResetToken,
   updateMerchant,
   updateOrder,
+  updateOrderStatus,
   updatePaymentOrderProviderId,
   updateUserPasswordAndClearReset,
   updateUserDisplayName,
@@ -477,7 +478,17 @@ const ordersRouter = router({
     }),
   updateStatus: protectedProcedure
     .input(z.object({ orderId: z.string(), status: z.string() }))
-    .mutation(async ({ input }) => await updateOrder(input.orderId, { status: input.status })),
+    .mutation(async ({ ctx, input }) => {
+      const merchant = await getMerchantByUserId(ctx.user.id);
+      if (!merchant) throw new TRPCError({ code: "NOT_FOUND", message: "Merchant not found" });
+      const result = await updateOrderStatus(input.orderId, input.status, merchant.id);
+      if (!result.ok) {
+        if (result.reason === "not_found") throw new TRPCError({ code: "NOT_FOUND" });
+        if (result.reason === "forbidden") throw new TRPCError({ code: "FORBIDDEN" });
+        if (result.reason === "insufficient_credits") throw new TRPCError({ code: "BAD_REQUEST", message: "Insufficient credits to create report" });
+      }
+      return result;
+    }),
   assignProduct: protectedProcedure
     .input(z.object({ orderId: z.string(), productId: z.string().nullable() }))
     .mutation(async ({ ctx, input }) => {
