@@ -94,9 +94,11 @@ if (!databaseUrl) {
   );
 }
 
+const isLocalDb = /localhost|127\.0\.0\.1|::1/.test(databaseUrl);
+
 export const pool = new Pool({
   connectionString: databaseUrl,
-  ssl: { rejectUnauthorized: false },
+  ssl: isLocalDb ? false : { rejectUnauthorized: false },
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
