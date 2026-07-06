@@ -1,0 +1,31 @@
+name: Neon database sync
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/store.ts"
+      - "scripts/sync-db.ts"
+      - ".github/workflows/neon-db-sync.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  sync-schema:
+    name: Apply schema to Neon
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pnpm install
+      - run: pnpm run db:sync
+        env:
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
