@@ -106,8 +106,6 @@ export function registerMetaPageOAuth(app: Express): void {
       "pages_manage_metadata",
       "business_management",
       "catalog_management",
-      "instagram_basic",
-      "instagram_manage_messages",
     ].join(",");
 
     const url = new URL("https://www.facebook.com/v18.0/dialog/oauth");
