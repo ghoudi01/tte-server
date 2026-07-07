@@ -86,12 +86,12 @@ export function registerMetaPageOAuth(app: Express): void {
     }
     const sid = req.cookies?.[COOKIE_NAME];
     if (typeof sid !== "string" || !sid) {
-      res.redirect(`${publicWebBase()}/login?next=/dashboard/social-sellers`);
+      res.redirect(`${publicWebBase()}/login?next=/plugins/social-sellers`);
       return;
     }
     const session = await getSessionById(sid);
     if (!session?.user) {
-      res.redirect(`${publicWebBase()}/login?next=/dashboard/social-sellers`);
+      res.redirect(`${publicWebBase()}/login?next=/plugins/social-sellers`);
       return;
     }
     const merchant = await getMerchantByUserId(session.user.id);
@@ -125,7 +125,7 @@ export function registerMetaPageOAuth(app: Express): void {
       const stateRaw = typeof req.query.state === "string" ? req.query.state : null;
       const merchantId = stateRaw ? verifyMerchantState(stateRaw) : null;
       if (!code || !merchantId) {
-        res.redirect(`${web}/dashboard/social-sellers?meta=error`);
+        res.redirect(`${web}/plugins/social-sellers?meta=error`);
         return;
       }
 
@@ -141,7 +141,7 @@ export function registerMetaPageOAuth(app: Express): void {
         expires_in?: number;
       };
       if (!tokenRes.ok || !tokenJson.access_token) {
-        res.redirect(`${web}/dashboard/social-sellers?meta=token`);
+        res.redirect(`${web}/plugins/social-sellers?meta=token`);
         return;
       }
 
@@ -173,7 +173,7 @@ export function registerMetaPageOAuth(app: Express): void {
 
       const pages = accJson.data ?? [];
       if (pages.length === 0) {
-        res.redirect(`${web}/dashboard/social-sellers?meta=nopages`);
+        res.redirect(`${web}/plugins/social-sellers?meta=nopages`);
         return;
       }
 
@@ -195,9 +195,9 @@ export function registerMetaPageOAuth(app: Express): void {
         }
       }
 
-      res.redirect(`${web}/dashboard/social-sellers?meta=connected`);
+      res.redirect(`${web}/plugins/social-sellers?meta=connected`);
     } catch {
-      res.redirect(`${web}/dashboard/social-sellers?meta=exception`);
+      res.redirect(`${web}/plugins/social-sellers?meta=exception`);
     }
   });
 }
